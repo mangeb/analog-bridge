@@ -4,7 +4,7 @@
 - **Block:** Chevrolet Big Block (BBC) 454ci (7.4L)
 - **Displacement:** 0.030" over (~457ci)
 - **Bore x Stroke:** 4.280" x 4.000"
-- **Compression Ratio:** 11.5:1
+- **Compression Ratio:** 10.6:1 (measured: 110cc chamber, 26cc dome, .020" deck, .038" gasket)
 - **Pistons:** SRP 212142, forged 4032 alloy, 26cc dome, 4.280" bore
 - **Rings:** Sportsman JEP-S100S8-42805
 - **Connecting Rods:** Eagle ESP-63853D
@@ -25,11 +25,17 @@
 - **Exhaust Runner:** 110 cc
 - **Valve Stem:** 11/32"
 - **Valve Angle:** 26°
-- **Port Style:** Oval port, designed for hydraulic flat tappet (running hydraulic roller #2261)
+- **Port Style:** Oval port, compatible with Edelbrock hydraulic roller cam (#2261) — valve springs and guides spec'd for .625" lift
+- **Valve Spring Seat Pressure:** 125 psi @ 1.975" installed height
+- **Valve Spring Open Pressure:** 310 psi @ .500"
+- **Valve Spring OD/ID:** 1.55" / 0.805", coil bind 1.15"
+- **Rocker Stud:** 7/16"
+- **Deck Clearance:** 0.020"
+- **Head Gasket:** .038" compressed
 - **Valve Covers:** Moroso #6896, cast aluminum, ARP stainless bolts (400-7508)
 
 ## Cam
-- **Camshaft:** Edelbrock Rollin' Thunder #2261, hydraulic roller (2014 upgrade)
+- **Camshaft:** Edelbrock Rollin' Thunder #2261, hydraulic roller (2014 upgrade, replaced Performer RPM cam from #2095 kit — .560"/.573" lift)
 - **Duration @ .050":** 236° intake / 245° exhaust
 - **Advertised Duration:** 335° intake / 339° exhaust
 - **Valve Lift:** .625" intake / .639" exhaust
