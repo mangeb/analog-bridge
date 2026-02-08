@@ -1,5 +1,6 @@
- /** 
- *  Carduino TaskScheduler Test
+/**
+ *  Analog Bridge - Datalogger for 1969 Chevrolet Nova 454 BBC
+ *  Evolved from CarDuino v1.2
  */
 #include <SPI.h>
 #include <SD.h>
@@ -64,20 +65,18 @@ static int ISP2_INT = 80; // 81.92 ms = 12.20703125 ~ 12.1 hz
 
 // Logging File variables
 File logFile;
-String logData = "";
 
 // Timestamps from last readings and start of recording
 unsigned long lastGPS;
-unsigned long startRecord = -1;
+bool isRecording = false;
+unsigned long startRecord = 0;
 
 // Data Values
 unsigned long mTime = 0;
 long mlat, mlon;
 float mSpeed, mAlt, mDir, mAccx, mAccy, mAccz, mRotx, mRoty, mRotz;
 float mAfr, mAfr1, mRpm, mMap, mOilp, mCoolant;
-
-// TODO change to data[]; and use enums for access
-static const String DELIM = ","; 
+bool mpu9250Ready = false; 
 
 const int buttonPin = 2;
 const int buttonLedPin = 3;
@@ -113,20 +112,21 @@ static void printL( Print & outs, int32_t degE7 )
 }
 
 static void startRecording() {
+  isRecording = true;
   startRecord = millis();
   DEBUG_PORT.println(F("Started Recording"));
 }
 
 static void stopRecording() {
+  isRecording = false;
   if(logFile) {
     logFile.close();
     DEBUG_PORT.println(F("Log file closed"));
   }
-  startRecord = -1;
   DEBUG_PORT.println(F("Stopped Recording"));
 }
 
-char filenameBuf[8] = "carduino";
+char filenameBuf[16] = "CLOG";
 char datebuf[20];
 int firstGPSFix = 0;
 static void processGPSFix( const gps_fix & fix );
@@ -135,7 +135,7 @@ static void processGPSFix( const gps_fix & fix ) {
     //DEBUG_PORT.println(F("GPS INF: Valid Fix"));
     if(firstGPSFix == 0) {
         digitalWrite(buttonLedPin, HIGH); 
-        firstGPSFix == 1;
+        firstGPSFix = 1;
     }
     lastGPS = millis();
     
@@ -199,10 +199,11 @@ static void readGPS() {
 static void readmpu9250() {
 #ifdef TIMING_DEBUG
   long tm0 = millis();
-#endif 
+#endif
 
+  if(!mpu9250Ready) return;
   mpu9250.readAccelXYZ(&mAccx, &mAccy, &mAccz);
-  mpu9250.readGyroXYZ(&mRotx,&mRoty,&mRotx);
+  mpu9250.readGyroXYZ(&mRotx,&mRoty,&mRotz);
   //mpu9250.readMagnetXYZ(&mx,&my,&mz);
   //mpu9250.readTemperature(&temp);
   /*
@@ -249,30 +250,24 @@ static void setupSDCard() {
   pinMode(SD_CS_PIN, OUTPUT);
 }
 
-boolean sdcardReady;
+bool sdcardReady = false;
 static void openLogFile() {
-  sdcardReady = false; 
+  sdcardReady = false;
   if (!SD.begin(SD_CS_PIN)) {
     DEBUG_PORT.println(F("SDCARD ERR: Card failed, or not present, recording will not work"));
     stopRecording();
-    return; 
-    // TODO use boolean for ready ? now it just tries until there is a card then starts logging, neat or ?
+    return;
   }
   sdcardReady = true;
-  
+
+  // Build filename using char buffer instead of String
+  char fname[24];
   int index = 0;
-  String fname = "";
-  fname = filenameBuf;
-  fname += "_";
-  fname += String(index);
-  fname += ".csv";
-  
+  snprintf(fname, sizeof(fname), "%s_%d.csv", filenameBuf, index);
+
   while(SD.exists(fname)) {
     index++;
-    fname = filenameBuf;
-    fname += "_";
-    fname += String(index);
-    fname += ".csv";
+    snprintf(fname, sizeof(fname), "%s_%d.csv", filenameBuf, index);
   }
 
   DEBUG_PORT.print(F("SDCARD INF: Trying to open "));
@@ -281,84 +276,77 @@ static void openLogFile() {
   if (logFile) {
     logFile.println(datebuf);
     logFile.println(F("time,lat,lon,speed,alt,dir,accx,accy,accz,rotx,roty,rotz,afr,afr1,rpm,map,oilp,coolant"));
-    logFile.println(F("(s),(deg),(deg),(mph),(ft),(deg),(g),(g),(g),(deg/s),(deg/s),(deg/s),(afr),(afr),(rpm),(inHgVac),(psig),(f)")); 
-    logFile.flush();  
-  } 
+    logFile.println(F("(s),(deg),(deg),(mph),(ft),(deg),(g),(g),(g),(deg/s),(deg/s),(deg/s),(afr),(afr),(rpm),(inHgVac),(psig),(f)"));
+    logFile.flush();
+    lastFlush = millis();
+  }
 }
+
+// Helper: write a single data row to a Print target (Serial or File)
+static void printRow(Print &out, float now) {
+  out.print(now, 3);
+  out.print(',');
+  printL(out, mlat);
+  out.print(',');
+  printL(out, mlon);
+  out.print(',');
+  out.print(mSpeed);
+  out.print(',');
+  out.print(mAlt);
+  out.print(',');
+  out.print(mDir);
+  out.print(',');
+  out.print(mAccx);
+  out.print(',');
+  out.print(mAccy);
+  out.print(',');
+  out.print(mAccz);
+  out.print(',');
+  out.print(mRotx);
+  out.print(',');
+  out.print(mRoty);
+  out.print(',');
+  out.print(mRotz);
+  out.print(',');
+  out.print(mAfr);
+  out.print(',');
+  out.print(mAfr1);
+  out.print(',');
+  out.print(mRpm);
+  out.print(',');
+  out.print(mMap);
+  out.print(',');
+  out.print(mOilp);
+  out.print(',');
+  out.println(mCoolant);
+}
+
+static unsigned long lastFlush = 0;
 
 static void writeToLog() {
 #ifdef TIMING_DEBUG
   long tm0 = millis();
-#endif 
+#endif
   float now = (float)(millis() - startRecord)/1000.0;
-  // GPS
-  DEBUG_PORT.print(now, 3);
-  DEBUG_PORT.print(DELIM);
-  printL(DEBUG_PORT, mlat);
-  DEBUG_PORT.print(DELIM);
-  printL(DEBUG_PORT, mlon);
 
-  logData += DELIM;
-  logData += mSpeed;
-  logData += DELIM;
-  logData += mAlt;
-  logData += DELIM;
-  logData += mDir;
-  logData += DELIM;
+  // Always print to serial debug
+  printRow(DEBUG_PORT, now);
 
-  // 9 Axis Acc
-  logData += mAccx;
-  logData += DELIM;
-  logData += mAccy;
-  logData += DELIM;
-  logData += mAccz;
-  logData += DELIM;
-
-  // 9 Axis Rot
-  logData += mRotx;
-  logData += DELIM;
-  logData += mRoty;
-  logData += DELIM;
-  logData += mRotz;
-  logData += DELIM;
-
-  // Innovate 
-  logData += mAfr;
-  logData += DELIM;
-  logData += mAfr1;
-  logData += DELIM;
-
-  logData += mRpm;
-  logData += DELIM;
-  logData += mMap;
-  logData += DELIM;
-
-  logData += mOilp;
-  logData += DELIM;
-  logData += mCoolant;
-  logData += "\r\n";
-
-  DEBUG_PORT.print(logData);
-
-  if(startRecord != -1) {
+  if(isRecording) {
     if(!logFile) {
       DEBUG_PORT.println(F("LOGGING ERR: No log file open, trying to open"));
       openLogFile();
     }
     else {
-      // TODO doesn't print the gps data
-      logFile.print(now, 3);
-      logFile.print(DELIM);
-      printL(logFile, mlat);
-      logFile.print(DELIM);
-      printL(logFile, mlon);
-      logFile.print(logData);
-      logFile.flush();
+      printRow(logFile, now);
+      // Flush every 1 second instead of every row
+      if(millis() - lastFlush > 1000) {
+        logFile.flush();
+        lastFlush = millis();
+      }
     }
   }
-  
-  logData = "";
-  
+
 #ifdef TIMING_DEBUG
    DEBUG_PORT.print(F("T writeToLog Start: "));
    DEBUG_PORT.print(tm0);
@@ -391,29 +379,31 @@ void handleSerial() {
         stopRecording();
         break;
       case '2':
-        byte cfg_rate200ms[] = {0xb5, 0x62, 0x06, 0x08, 0x06, 0x00, 0xc8, 0x00, 0x01, 0x00, 0x01, 0x00, 0xde, 0x6a};
-        gpsPort.write(cfg_rate200ms, sizeof(cfg_rate200ms)); 
+        {
+          byte cfg_rate200ms[] = {0xb5, 0x62, 0x06, 0x08, 0x06, 0x00, 0xc8, 0x00, 0x01, 0x00, 0x01, 0x00, 0xde, 0x6a};
+          gpsPort.write(cfg_rate200ms, sizeof(cfg_rate200ms));
+        }
         break;
       case 'B':
-        byte cfg_baud115200[] = {0xB5, 0x62, 0x06, 0x00, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0xD0, 0x08, 0x00, 0x00, 0x00, 0xC2, 0x01, 0x00, 0x07, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0x7E};
-        delay(10);
-        gpsPort.begin(9600);
-        delay(10);
-        gpsPort.write(cfg_baud115200, sizeof(cfg_baud115200));
-        delay(10);
-        gpsPort.begin(115200); 
+        {
+          byte cfg_baud115200[] = {0xB5, 0x62, 0x06, 0x00, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0xD0, 0x08, 0x00, 0x00, 0x00, 0xC2, 0x01, 0x00, 0x07, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0x7E};
+          delay(10);
+          gpsPort.begin(9600);
+          delay(10);
+          gpsPort.write(cfg_baud115200, sizeof(cfg_baud115200));
+          delay(10);
+          gpsPort.begin(115200);
+        }
         break;
     }
   }
 }
 
-//TODO: Is it blinking?
-long lastBlink;
-boolean ledState = LOW;
+unsigned long lastBlink = 0;
+bool ledState = LOW;
 void processLed() {
-  if(startRecord != -1) {
+  if(isRecording) {
     if(millis() - lastBlink > 1000) {
-      DEBUG_PORT.println(F("BLINK"));
       digitalWrite(buttonLedPin, ledState);
       ledState = !ledState;
       lastBlink = millis();
@@ -424,32 +414,31 @@ void processLed() {
     digitalWrite(LED_BUILTIN, HIGH);
   }
 }
- 
-boolean buttonState = LOW;
-boolean buttonReset = LOW;
-long lastButton;
-void processButtons() { 
- buttonState = digitalRead(buttonPin);
- 
- if(buttonState == HIGH && startRecord == -1 && buttonReset == LOW) {
-      DEBUG_PORT.println(F("START RECORDING PRESS"));
-      startRecording();
-      buttonReset = HIGH;
-      lastButton = millis();
+
+bool buttonReset = false;
+unsigned long lastButton = 0;
+void processButtons() {
+  bool buttonState = digitalRead(buttonPin);
+
+  if(buttonState == HIGH && !isRecording && !buttonReset) {
+    DEBUG_PORT.println(F("START RECORDING PRESS"));
+    startRecording();
+    buttonReset = true;
+    lastButton = millis();
   }
- else if(buttonState == HIGH && startRecord != -1 && buttonReset == LOW) {
-      DEBUG_PORT.println(F("STOP RECORDING PRESS"));
-      stopRecording();
-      buttonReset = HIGH;
-      digitalWrite(buttonLedPin, HIGH);
+  else if(buttonState == HIGH && isRecording && !buttonReset) {
+    DEBUG_PORT.println(F("STOP RECORDING PRESS"));
+    stopRecording();
+    buttonReset = true;
+    digitalWrite(buttonLedPin, HIGH);
   }
-  else if(buttonState == LOW && buttonReset == HIGH && (millis() - lastBlink > 1000)) {
-     buttonReset = LOW;
+  else if(buttonState == LOW && buttonReset && (millis() - lastButton > 500)) {
+    buttonReset = false;
   }
 }
 
 
-long i;
+unsigned long nextSample = 0;
 void setup () {
   DEBUG_PORT.begin(115200);
   DEBUG_PORT.println(F("INF: Debug Port - Configured"));
@@ -464,10 +453,11 @@ void setup () {
   // TODO only when recording start should we check and open file?
   
   if (mpu9250.begin()) {
+    mpu9250Ready = true;
     DEBUG_PORT.println(F("INF: 9Axis - Configured"));
   } else {
-    DEBUG_PORT.println(F("ERR: 9Axis - Device error"));
-    while(1);
+    mpu9250Ready = false;
+    DEBUG_PORT.println(F("ERR: 9Axis - Device error, continuing without IMU"));
   }
   
   pinMode(buttonLedPin, OUTPUT);
@@ -475,21 +465,19 @@ void setup () {
   
   pinMode(buttonPin, INPUT);
   
-  i = millis();
+  nextSample = millis();
 }
 
 void loop () {
   handleSerial();
   processLed();
   processButtons();
-  
-  if(millis() - i > 80) {
-    i = millis();
+
+  if(millis() >= nextSample) {
+    nextSample += 80;  // Fixed 80ms interval, no drift
     readISP2();
     readmpu9250();
     readGPS();
     writeToLog();
   }
-
-  // TODO measure time from from start to finish and adjust next delay
 }
