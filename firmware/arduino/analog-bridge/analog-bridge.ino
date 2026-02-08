@@ -251,6 +251,7 @@ static void setupSDCard() {
 }
 
 bool sdcardReady = false;
+static unsigned long lastFlush = 0;
 static void openLogFile() {
   sdcardReady = false;
   if (!SD.begin(SD_CS_PIN)) {
@@ -320,8 +321,6 @@ static void printRow(Print &out, float now) {
   out.print(',');
   out.println(mCoolant);
 }
-
-static unsigned long lastFlush = 0;
 
 static void writeToLog() {
 #ifdef TIMING_DEBUG
