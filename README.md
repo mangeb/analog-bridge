@@ -1,0 +1,68 @@
+# Analog Bridge
+
+Datalogger and tuning companion for a 1969 Chevrolet Nova.
+
+Evolved from the **CarDuino** project (2020-2021). Bridges analog engine sensors to digital logging for real-time data capture during tuning sessions.
+
+## The Car
+
+- **Year/Make/Model:** 1969 Chevrolet Nova
+- **Engine:** _TODO: fill in (displacement, heads, cam, intake, carb/EFI)_
+- **Transmission:** _TODO: fill in_
+- **Rear end:** _TODO: fill in_
+
+## Sensors & Data Channels
+
+| Channel | Sensor/Source | Protocol | Notes |
+|---------|--------------|----------|-------|
+| AFR (x2) | Innovate LMA-2 wideband O2 | ISP2 (19200 baud) | Dual wideband lambda |
+| RPM | Innovate SSI-4 Plus | ISP2 | Via tach signal |
+| MAP | Innovate SSI-4 Plus | ISP2 | Manifold vacuum (inHg) |
+| Oil Pressure | Innovate SSI-4 Plus | ISP2 | (psig) |
+| Coolant Temp | Innovate SSI-4 Plus | ISP2 | (°F) |
+| GPS | u-blox (NEO-series) | NMEA via serial | Lat, lon, speed, altitude, heading |
+| Accelerometer | MPU-9250 | I2C | 3-axis (g) |
+| Gyroscope | MPU-9250 | I2C | 3-axis (deg/s) |
+
+## Firmware Targets
+
+| Target | Status | Notes |
+|--------|--------|-------|
+| Arduino (Uno/Mega) | Active — running in car | Original CarDuino platform |
+| ESP32 | Planned | WiFi/BLE, faster ADC, dual core |
+
+## Log Format
+
+CSV at ~12Hz with columns:
+```
+time,lat,lon,speed,alt,dir,accx,accy,accz,rotx,roty,rotz,afr,afr1,rpm,map,oilp,coolant
+(s),(deg),(deg),(mph),(ft),(deg),(g),(g),(g),(deg/s),(deg/s),(deg/s),(afr),(afr),(rpm),(inHgVac),(psig),(f)
+```
+
+## Folder Structure
+
+```
+analog-bridge/
+├── firmware/
+│   ├── arduino/          # Arduino target (current)
+│   ├── esp32/            # ESP32 target (planned)
+│   └── shared/           # Common code between targets
+├── hardware/
+│   ├── wiring/           # Wiring diagrams, pinouts
+│   └── sensors/          # Sensor datasheets and specs
+├── docs/
+│   ├── car/              # Engine specs, tuning notes
+│   ├── protocols/        # ISP2 protocol docs
+│   └── tuning/           # Tuning session notes and targets
+├── tools/
+│   └── analysis/         # Python/scripts for log analysis
+└── logs/                 # Raw log files from sessions
+```
+
+## Known Issues (from CarDuino)
+
+- `readISP2()` uses random data — real ISP2 parsing not yet implemented in firmware
+- `firstGPSFix` comparison uses `==` instead of `=` (line 138 in original)
+- `readGyroXYZ` writes to `mRotx` twice instead of `mRotx, mRoty, mRotz`
+- GPS date filename uses hardcoded timezone offset (-7)
+- String concatenation in logging loop — consider buffer-based approach for performance
