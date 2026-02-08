@@ -36,13 +36,10 @@
 
 #include <Wire.h>
 #include <FaBo9Axis_MPU9250.h>
-#include <NeoSWSerial.h>
 
 /* SD card attached to SPI bus as follows:
-* MOSI - pin 11
-* MISO - pin 12
-* CLK - pin 13
-* CS - pin 10 Uno (53 on Mega)
+* Mega: MOSI-51, MISO-50, CLK-52, CS-53
+* Uno:  MOSI-11, MISO-12, CLK-13, CS-10
 */
 
 // 9 Axis 
@@ -58,10 +55,6 @@ static NMEAGPS  gps; // This parses the GPS characters
 // Debug
 //#define TIMING_DEBUG 1 // 140 bytes SRAM, 750 bytes FLASH
 //#define GPS_DEBUG 1
-
-// Innovate Serial Protocol 2
-// 8 data bits, 1 stop bit, no parity, 19200 Baud
-static int ISP2_INT = 80; // 81.92 ms = 12.20703125 ~ 12.1 hz
 
 // Logging File variables
 File logFile;
@@ -146,9 +139,10 @@ static void processGPSFix( const gps_fix & fix ) {
     mDir = fix.heading();
     
     int timezone = -7; // SF (UTC -0800) > NMEA is UTC oriented
-    
-    sprintf(datebuf, "%02d/%02d/%02d %02d:%02d:%02d ",  fix.dateTime.date, fix.dateTime.month, fix.dateTime.year, fix.dateTime.hours+timezone, fix.dateTime.minutes, fix.dateTime.seconds); 
-    sprintf(filenameBuf, "%02d%02d%02d",  fix.dateTime.month, fix.dateTime.date,fix.dateTime.hours+timezone); 
+    int localHour = (fix.dateTime.hours + timezone + 24) % 24;
+
+    sprintf(datebuf, "%02d/%02d/%02d %02d:%02d:%02d ",  fix.dateTime.date, fix.dateTime.month, fix.dateTime.year, localHour, fix.dateTime.minutes, fix.dateTime.seconds);
+    sprintf(filenameBuf, "%02d%02d%02d",  fix.dateTime.month, fix.dateTime.date, localHour); 
 
 #ifdef GPS_DEBUG
     DEBUG_PORT.print(F("GPS Time: "));
@@ -245,7 +239,11 @@ static void readISP2() {
 #endif
 }
 
-const int SD_CS_PIN = 10;
+#if defined(__AVR_ATmega2560__) || defined(__AVR_ATmega1280__)
+  const int SD_CS_PIN = 53;
+#else
+  const int SD_CS_PIN = 10;
+#endif
 static void setupSDCard() {
   pinMode(SD_CS_PIN, OUTPUT);
 }
@@ -354,19 +352,6 @@ static void writeToLog() {
 #endif
 }
 
-void updateRTC() {
- #ifdef TIMING_DEBUG
-  long tm0 = millis();
-  DEBUG_PORT.println(F("t5: updateRTC"));
-#endif 
-#ifdef TIMING_DEBUG
-   DEBUG_PORT.print(F(" t5: Start: "));
-   DEBUG_PORT.print(tm0);
-   DEBUG_PORT.print(F(" Dur: "));
-   DEBUG_PORT.println(millis() - tm0);
-#endif
-}
-        
 void handleSerial() {
   while (DEBUG_PORT.available() > 0) {
     char c = DEBUG_PORT.read();
@@ -429,6 +414,7 @@ void processButtons() {
     DEBUG_PORT.println(F("STOP RECORDING PRESS"));
     stopRecording();
     buttonReset = true;
+    lastButton = millis();
     digitalWrite(buttonLedPin, HIGH);
   }
   else if(buttonState == LOW && buttonReset && (millis() - lastButton > 500)) {
