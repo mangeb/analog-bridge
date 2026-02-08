@@ -18,8 +18,15 @@
 ## Heads
 - **Heads:** Edelbrock Performer RPM Oval Port #60459 (aluminum)
 - **Source:** Edelbrock Top End Kit #2095 (2008)
+- **Combustion Chamber:** 110 cc
+- **Intake Valve:** 2.19"
+- **Exhaust Valve:** 1.88"
+- **Intake Runner:** 290 cc
+- **Exhaust Runner:** 110 cc
+- **Valve Stem:** 11/32"
+- **Valve Angle:** 26°
+- **Port Style:** Oval port, designed for hydraulic flat tappet (running hydraulic roller #2261)
 - **Valve Covers:** Moroso #6896, cast aluminum, ARP stainless bolts (400-7508)
-- _TODO: combustion chamber cc, valve sizes (confirm from head casting)_
 
 ## Cam
 - **Camshaft:** Edelbrock Rollin' Thunder #2261, hydraulic roller (2014 upgrade)
