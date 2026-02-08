@@ -23,5 +23,5 @@ __pycache__/
 venv/
 
 # Logs (tracked selectively)
-# logs/*.csv
-# logs/*.log
+logs/*.csv
+logs/*.log

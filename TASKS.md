@@ -9,6 +9,7 @@
 - [ ] **Secondary spring swap** - Move to white (lightest) spring to force secondary engagement at WOT
 - [ ] **Re-evaluate WOT AFR** - Target 12.5–12.8:1 at sustained WOT after secondary spring swap
 - [ ] **PVCR adjustment** - Once secondaries open, reduce PVCR insert from 0.063" to ~0.055" to clean up primary enrichment curve
+- [ ] **Add remaining engine/car specs** - Fill in TODOs in `docs/car/engine-spec.md`: head casting numbers, cam specs (duration/lift/LSA), intake manifold, exhaust/headers, rear end gear ratio, trans details
 
 ## Waiting On
 
