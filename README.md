@@ -7,9 +7,11 @@ Evolved from the **CarDuino** project (2020-2021). Bridges analog engine sensors
 ## The Car
 
 - **Year/Make/Model:** 1969 Chevrolet Nova
-- **Engine:** _TODO: fill in (displacement, heads, cam, intake, carb/EFI)_
-- **Transmission:** _TODO: fill in_
-- **Rear end:** _TODO: fill in_
+- **Engine:** 454ci BBC, 0.030" over (~457ci), 11.5:1 CR, aluminum heads, aggressive cam
+- **Carburetor:** Holley 850 CFM vacuum secondary
+- **Ignition:** MSD mechanical w/ vacuum advance, 16° initial, 34° total mechanical
+- **Transmission:** 5-speed manual
+- **Fuel:** 91 octane (California pump gas)
 
 ## Sensors & Data Channels
 
