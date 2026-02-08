@@ -1,7 +1,7 @@
 # Tasks
 
 ## Active
-- [ ] **Implement real ISP2 parsing** - Replace random data stub in `readISP2()` with actual Innovate Serial Protocol 2 parser using existing byte-level notes in `docs/protocols/`
+- [ ] **Calibrate ISP2 aux conversions** - Replace placeholder voltage→unit macros (`AUX_COOLANT_F`, `AUX_RPM`, etc.) with actual sensor calibration curves
 - [ ] **Build log analysis tool** - Python script in `tools/analysis/` to load CSV logs and generate AFR vs RPM/MAP scatter plots for tuning
 - [ ] **ESP32 port** - Set up PlatformIO project in `firmware/esp32/` with shared code structure, targeting ESP32 as primary platform
 - [ ] **Fuel pressure test** - Verify 6–7 PSI steady under WOT load
@@ -17,3 +17,4 @@
 
 ## Done
 - [x] ~~Fill in engine spec~~ (2026-02-08) - Completed with full carb calibration, ignition profile, and tuning targets
+- [x] ~~Implement real ISP2 parsing~~ (2026-02-08) - Replaced random() stub with header-sync state machine, LC-1 AFR decoding (float math), and aux channel extraction. Fixes: double-indexing bug, integer division AFR=0 bug from InnovateTest. Mega uses Serial2 hardware UART.

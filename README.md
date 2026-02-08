@@ -61,10 +61,18 @@ analog-bridge/
 └── logs/                 # Raw log files from sessions
 ```
 
-## Known Issues (from CarDuino)
+## Known Issues
 
-- `readISP2()` uses random data — real ISP2 parsing not yet implemented in firmware
-- `firstGPSFix` comparison uses `==` instead of `=` (line 138 in original)
-- `readGyroXYZ` writes to `mRotx` twice instead of `mRotx, mRoty, mRotz`
+- Aux sensor voltage→unit conversions are placeholders — coolant and RPM need real calibration curves for your specific sensors
 - GPS date filename uses hardcoded timezone offset (-7)
-- String concatenation in logging loop — consider buffer-based approach for performance
+- AltSoftSerial on Uno claims pin 10 (PWM) which is also SD CS — may conflict; Mega uses Serial2 and avoids this
+- AltSoftSerial 80-byte RX buffer can overflow at 19200 baud between 80ms reads — some ISP2 packets may be dropped (acceptable at ~12Hz)
+
+### Fixed (from CarDuino)
+- ~~`readISP2()` random data~~ → real ISP2 parser with header sync, LC-1 AFR, and aux channel decoding
+- ~~`firstGPSFix == 1`~~ → assignment `= 1`
+- ~~`readGyroXYZ` Z-axis bug~~ → correct `&mRotz`
+- ~~String concatenation~~ → `printRow()` with direct `print()` calls
+- ~~`logFile.flush()` every 80ms~~ → every 1 second
+- ~~MPU9250 `while(1)` halt~~ → graceful degradation
+- ~~Loop timing drift~~ → fixed `nextSample += 80` interval
