@@ -28,6 +28,7 @@ const el = {
   oil:      document.getElementById('oil-val'),
   cltCard:  document.getElementById('clt-card'),
   clt:      document.getElementById('clt-val'),
+  cltC:     document.getElementById('clt-c-val'),
   // Speed + MAP
   vss:      document.getElementById('vss-val'),
   gpsSpd:   document.getElementById('gps-spd-val'),
@@ -149,6 +150,7 @@ function update(d) {
   el.clt.textContent = cltVal > 0 ? Math.round(cltVal) : '--';
   const cltAlarm = cltVal >= 210;
   el.clt.className = 'gauge-value ' + (cltVal > 0 ? cltClass(cltVal) : 'clt-cold');
+  el.cltC.textContent = cltVal > 0 ? Math.round((cltVal - 32) * 5 / 9) : '--';
   el.cltCard.classList.toggle('alarm-active', cltAlarm);
 
   // Speed — GPS is primary (big), VSS is secondary (small)
