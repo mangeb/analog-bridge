@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Engine Calculator — 1969 Nova 454 BBC</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; display: flex; justify-content: center; padding: 24px; }
@@ -81,12 +82,16 @@
   /* AFR heatmap */
   .afr-heatmap-wrap { margin-top: 16px; }
   .afr-heatmap-wrap h3 { font-size: 0.9rem; color: #4fc3f7; margin-bottom: 8px; }
-  #afrHeatmap { width: 100%; border-radius: 6px; cursor: pointer; }
+  #afrScene { width: 100%; height: 380px; border-radius: 6px; cursor: grab; }
+  #afrScene:active { cursor: grabbing; }
   .afr-matrix tbody tr { cursor: pointer; transition: background 0.15s; }
   .afr-matrix tbody tr:hover { background: #1a3a5c; }
   .afr-matrix tbody tr.afr-active { background: #1a3a5c; }
   .afr-legend { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: #888; margin-top: 6px; }
   .afr-legend-bar { flex: 1; height: 10px; border-radius: 3px; }
+  .afr-view-btns { display: flex; gap: 6px; margin-top: 8px; }
+  .afr-view-btns button { background: #0f1a30; border: 1px solid #2a4a6c; color: #b0b0b0; padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+  .afr-view-btns button:hover, .afr-view-btns button.active { border-color: #4fc3f7; color: #4fc3f7; }
 
   .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   .checkbox-row input[type="checkbox"] { width: auto; }
@@ -268,14 +273,20 @@
       </div>
 
       <div class="afr-heatmap-wrap">
-        <h3>AFR Map — Load vs RPM</h3>
-        <canvas id="afrHeatmap" height="280"></canvas>
+        <h3>AFR Map — Load vs RPM (3D)</h3>
+        <div id="afrScene"></div>
         <div class="afr-legend">
           <span>Rich 11.0</span>
           <div class="afr-legend-bar" id="afrLegendBar"></div>
           <span>15.0 Lean</span>
         </div>
-        <div class="afr-notes" style="margin-top:6px">Click a condition row above to highlight its region on the map. Click the map to clear.</div>
+        <div class="afr-view-btns">
+          <button onclick="setView('angle')">3D Angle</button>
+          <button onclick="setView('top')">Top Down</button>
+          <button onclick="setView('front')">Front</button>
+          <button onclick="setView('side')">Side</button>
+        </div>
+        <div class="afr-notes" style="margin-top:6px">Drag to rotate, scroll to zoom. Click a condition row above to highlight its region.</div>
       </div>
     </div>
   </details>
@@ -603,145 +614,404 @@ function resetAll() {
   calculate();
 }
 
-// ══════════ AFR HEATMAP ══════════
+// ══════════ AFR 3D SURFACE ══════════
 
 const afrRpms = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500];
 const afrLoads = ['WOT', '75%', '50%', '25%', 'Idle/Decel'];
-// AFR values: rows = load (WOT→Idle top→bottom), cols = RPM columns
 const afrMap = [
-  // 500   1000  1500  2000  2500  3000  3500  4000  4500  5000  5500  6000  6500   ← RPM
-  [12.0, 12.0, 12.8, 12.8, 12.8, 12.8, 12.6, 12.6, 12.5, 12.5, 12.4, 12.3, 12.2], // WOT
-  [12.5, 12.8, 13.2, 13.2, 13.0, 13.0, 12.8, 12.8, 12.6, 12.6, 12.5, 12.4, 12.3], // 75%
-  [13.0, 13.5, 14.0, 13.8, 13.6, 13.5, 13.2, 13.0, 13.0, 12.8, 12.8, 12.6, 12.5], // 50%
-  [13.5, 13.8, 14.5, 14.5, 14.2, 14.0, 13.8, 13.5, 13.2, 13.0, 13.0, 12.8, 12.8], // 25%
-  [14.0, 13.8, 14.7, 14.7, 14.7, 14.7, 14.7, 14.7, 14.7, 14.7, 14.7, 14.7, 14.7], // Idle/Decel
+  [12.0, 12.0, 12.8, 12.8, 12.8, 12.8, 12.6, 12.6, 12.5, 12.5, 12.4, 12.3, 12.2],
+  [12.5, 12.8, 13.2, 13.2, 13.0, 13.0, 12.8, 12.8, 12.6, 12.6, 12.5, 12.4, 12.3],
+  [13.0, 13.5, 14.0, 13.8, 13.6, 13.5, 13.2, 13.0, 13.0, 12.8, 12.8, 12.6, 12.5],
+  [13.5, 13.8, 14.5, 14.5, 14.2, 14.0, 13.8, 13.5, 13.2, 13.0, 13.0, 12.8, 12.8],
+  [14.0, 13.8, 14.7, 14.7, 14.7, 14.7, 14.7, 14.7, 14.7, 14.7, 14.7, 14.7, 14.7],
 ];
-
-// Condition → grid region mapping: { rpmMin, rpmMax, loadRows[] }
 const conditionRegions = [
-  { rpmMin:500,  rpmMax:1000, rows:[4] },           // Cold Start (idle RPM, all load = choke)
-  { rpmMin:500,  rpmMax:1000, rows:[4] },           // Warm Idle
-  { rpmMin:1500, rpmMax:2500, rows:[3,4] },         // Light Cruise
-  { rpmMin:2000, rpmMax:3500, rows:[2,3] },         // Moderate Cruise
-  { rpmMin:500,  rpmMax:6500, rows:[0,1] },         // Tip-In / Accel (any RPM, high load)
-  { rpmMin:2000, rpmMax:3500, rows:[0] },           // WOT Low RPM
-  { rpmMin:3500, rpmMax:5000, rows:[0] },           // WOT Mid RPM
-  { rpmMin:5000, rpmMax:6500, rows:[0] },           // WOT High RPM
-  { rpmMin:500,  rpmMax:6500, rows:[4] },           // Decel / Coast
+  { rpmMin:500,  rpmMax:1000, rows:[4] },
+  { rpmMin:500,  rpmMax:1000, rows:[4] },
+  { rpmMin:1500, rpmMax:2500, rows:[3,4] },
+  { rpmMin:2000, rpmMax:3500, rows:[2,3] },
+  { rpmMin:500,  rpmMax:6500, rows:[0,1] },
+  { rpmMin:2000, rpmMax:3500, rows:[0] },
+  { rpmMin:3500, rpmMax:5000, rows:[0] },
+  { rpmMin:5000, rpmMax:6500, rows:[0] },
+  { rpmMin:500,  rpmMax:6500, rows:[4] },
 ];
 
-function afrColor(afr) {
-  // 11.0 = deep red/orange → 14.7 = green/blue
+function afrColorRGB(afr) {
   const t = Math.max(0, Math.min(1, (afr - 11.0) / (15.0 - 11.0)));
+  let r, g, b;
   if (t < 0.35) {
     const s = t / 0.35;
-    return `rgb(${255}, ${Math.round(70 + s*100)}, ${Math.round(30 + s*30)})`;
+    r = 255; g = 70 + s * 100; b = 30 + s * 30;
   } else if (t < 0.65) {
     const s = (t - 0.35) / 0.3;
-    return `rgb(${Math.round(255 - s*120)}, ${Math.round(170 + s*60)}, ${Math.round(60 + s*40)})`;
+    r = 255 - s * 120; g = 170 + s * 60; b = 60 + s * 40;
   } else {
     const s = (t - 0.65) / 0.35;
-    return `rgb(${Math.round(135 - s*70)}, ${Math.round(230 - s*40)}, ${Math.round(100 + s*60)})`;
+    r = 135 - s * 70; g = 230 - s * 40; b = 100 + s * 60;
+  }
+  return { r: r / 255, g: g / 255, b: b / 255 };
+}
+
+// Three.js scene
+let scene, camera, renderer, surfaceMesh, edgesMesh, hlMesh;
+let activeCondition = -1;
+let isDragging = false, prevMouse = { x: 0, y: 0 };
+let camTheta = 0.8, camPhi = 0.55, camDist = 8.5;
+
+const GRID_W = 6, GRID_D = 3; // world units for RPM and Load axes
+const AFR_MIN = 11.0, AFR_MAX = 15.0, AFR_HEIGHT = 2.5; // height scale
+
+function afrToY(afr) {
+  // Invert: lower AFR (richer) = taller bar (more fuel)
+  return ((afr - AFR_MIN) / (AFR_MAX - AFR_MIN)) * AFR_HEIGHT;
+}
+
+function initAfrScene() {
+  const container = $('afrScene');
+  if (!container) return;
+  const W = container.clientWidth, H = 380;
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(40, W / H, 0.1, 100);
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setClearColor(0x1a1a2e, 1);
+  container.appendChild(renderer.domElement);
+
+  // Lights
+  const amb = new THREE.AmbientLight(0xffffff, 0.45);
+  scene.add(amb);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+  dir.position.set(5, 8, 4);
+  scene.add(dir);
+  const dir2 = new THREE.DirectionalLight(0x4fc3f7, 0.25);
+  dir2.position.set(-3, 4, -2);
+  scene.add(dir2);
+
+  buildSurface();
+  buildGrid();
+  buildLabels();
+  updateCamera();
+  animate();
+
+  // Mouse controls
+  container.addEventListener('mousedown', e => { isDragging = true; prevMouse = { x: e.clientX, y: e.clientY }; });
+  window.addEventListener('mouseup', () => isDragging = false);
+  window.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    const dx = e.clientX - prevMouse.x, dy = e.clientY - prevMouse.y;
+    camTheta -= dx * 0.008;
+    camPhi = Math.max(0.1, Math.min(Math.PI / 2 - 0.05, camPhi + dy * 0.008));
+    prevMouse = { x: e.clientX, y: e.clientY };
+    updateCamera();
+  });
+  container.addEventListener('wheel', e => {
+    e.preventDefault();
+    camDist = Math.max(4, Math.min(18, camDist + e.deltaY * 0.01));
+    updateCamera();
+  }, { passive: false });
+
+  // Legend
+  const bar = $('afrLegendBar');
+  if (bar) bar.style.background = 'linear-gradient(to right, rgb(255,70,30), rgb(255,170,60), rgb(135,230,100), rgb(65,190,160))';
+}
+
+function updateCamera() {
+  const cx = GRID_W / 2, cz = GRID_D / 2, cy = AFR_HEIGHT * 0.4;
+  camera.position.set(
+    cx + camDist * Math.sin(camPhi) * Math.sin(camTheta),
+    cy + camDist * Math.cos(camPhi),
+    cz + camDist * Math.sin(camPhi) * Math.cos(camTheta)
+  );
+  camera.lookAt(cx, cy, cz);
+}
+
+function buildSurface() {
+  const rows = afrMap.length, cols = afrMap[0].length;
+  // Create geometry with per-cell quads (flat shading, per-face color)
+  const geo = new THREE.BufferGeometry();
+  const verts = [], normals = [], colors = [], indices = [];
+  const cellW = GRID_W / (cols - 1), cellD = GRID_D / (rows - 1);
+
+  // Build smooth surface vertices
+  const posGrid = [];
+  for (let ri = 0; ri < rows; ri++) {
+    const row = [];
+    for (let ci = 0; ci < cols; ci++) {
+      row.push(new THREE.Vector3(ci * cellW, afrToY(afrMap[ri][ci]), ri * cellD));
+    }
+    posGrid.push(row);
+  }
+
+  // Quads → 2 triangles each, with per-face vertices for flat color
+  let vi = 0;
+  for (let ri = 0; ri < rows - 1; ri++) {
+    for (let ci = 0; ci < cols - 1; ci++) {
+      const p00 = posGrid[ri][ci], p10 = posGrid[ri][ci + 1];
+      const p01 = posGrid[ri + 1][ci], p11 = posGrid[ri + 1][ci + 1];
+      // Average AFR for color
+      const avgAfr = (afrMap[ri][ci] + afrMap[ri][ci + 1] + afrMap[ri + 1][ci] + afrMap[ri + 1][ci + 1]) / 4;
+      const c = afrColorRGB(avgAfr);
+
+      // Normal for this quad
+      const e1 = new THREE.Vector3().subVectors(p10, p00);
+      const e2 = new THREE.Vector3().subVectors(p01, p00);
+      const n = new THREE.Vector3().crossVectors(e1, e2).normalize();
+
+      // Triangle 1: p00, p10, p01
+      [p00, p10, p01].forEach(p => {
+        verts.push(p.x, p.y, p.z);
+        normals.push(n.x, n.y, n.z);
+        colors.push(c.r, c.g, c.b);
+      });
+      indices.push(vi, vi + 1, vi + 2);
+      vi += 3;
+      // Triangle 2: p10, p11, p01
+      [p10, p11, p01].forEach(p => {
+        verts.push(p.x, p.y, p.z);
+        normals.push(n.x, n.y, n.z);
+        colors.push(c.r, c.g, c.b);
+      });
+      indices.push(vi, vi + 1, vi + 2);
+      vi += 3;
+    }
+  }
+
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setIndex(indices);
+
+  const mat = new THREE.MeshPhongMaterial({
+    vertexColors: true,
+    side: THREE.DoubleSide,
+    shininess: 40,
+    transparent: true,
+    opacity: 0.92,
+  });
+  surfaceMesh = new THREE.Mesh(geo, mat);
+  scene.add(surfaceMesh);
+
+  // Wireframe grid on top
+  const wireMat = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true, transparent: true, opacity: 0.12 });
+  edgesMesh = new THREE.Mesh(geo.clone(), wireMat);
+  scene.add(edgesMesh);
+}
+
+function buildGrid() {
+  // Floor grid & axis lines
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x2a4a6c, transparent: true, opacity: 0.5 });
+
+  // Floor grid lines (RPM direction)
+  for (let ri = 0; ri < afrMap.length; ri++) {
+    const z = ri * GRID_D / (afrMap.length - 1);
+    const pts = [new THREE.Vector3(0, 0, z), new THREE.Vector3(GRID_W, 0, z)];
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    scene.add(new THREE.Line(geo, lineMat));
+  }
+  // Floor grid lines (Load direction)
+  for (let ci = 0; ci < afrMap[0].length; ci++) {
+    const x = ci * GRID_W / (afrMap[0].length - 1);
+    const pts = [new THREE.Vector3(x, 0, 0), new THREE.Vector3(x, 0, GRID_D)];
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    scene.add(new THREE.Line(geo, lineMat));
+  }
+
+  // Vertical drop lines at corners for depth perception
+  const dropMat = new THREE.LineBasicMaterial({ color: 0x1a3a5c, transparent: true, opacity: 0.35 });
+  for (let ri = 0; ri < afrMap.length; ri += 2) {
+    for (let ci = 0; ci < afrMap[0].length; ci += 3) {
+      const x = ci * GRID_W / (afrMap[0].length - 1);
+      const z = ri * GRID_D / (afrMap.length - 1);
+      const y = afrToY(afrMap[ri][ci]);
+      const pts = [new THREE.Vector3(x, 0, z), new THREE.Vector3(x, y, z)];
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      scene.add(new THREE.Line(geo, dropMat));
+    }
+  }
+
+  // Axis lines (bright)
+  const axisMat = new THREE.LineBasicMaterial({ color: 0x4fc3f7, transparent: true, opacity: 0.7 });
+  [
+    [new THREE.Vector3(0, 0, 0), new THREE.Vector3(GRID_W, 0, 0)],
+    [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, GRID_D)],
+    [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, AFR_HEIGHT, 0)],
+  ].forEach(pts => {
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    scene.add(new THREE.Line(geo, axisMat));
+  });
+}
+
+function makeTextSprite(text, opts = {}) {
+  const canvas = document.createElement('canvas');
+  const sz = opts.size || 128;
+  canvas.width = sz; canvas.height = sz / 2;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = opts.color || '#888888';
+  ctx.font = `${opts.bold ? 'bold ' : ''}${opts.fontSize || 20}px -apple-system, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(opts.scale || 0.8, (opts.scale || 0.8) * 0.5, 1);
+  return sprite;
+}
+
+function buildLabels() {
+  // RPM labels along X axis
+  afrRpms.forEach((rpm, i) => {
+    if (i % 2 !== 0) return;
+    const x = i * GRID_W / (afrRpms.length - 1);
+    const s = makeTextSprite(rpm.toString(), { fontSize: 18, scale: 0.7 });
+    s.position.set(x, -0.25, -0.2);
+    scene.add(s);
+  });
+  // RPM axis title
+  const rpmTitle = makeTextSprite('RPM', { color: '#4fc3f7', bold: true, fontSize: 22, scale: 0.9 });
+  rpmTitle.position.set(GRID_W / 2, -0.5, -0.4);
+  scene.add(rpmTitle);
+
+  // Load labels along Z axis
+  afrLoads.forEach((lbl, i) => {
+    const z = i * GRID_D / (afrLoads.length - 1);
+    const s = makeTextSprite(lbl, { fontSize: 18, scale: 0.65 });
+    s.position.set(-0.45, -0.25, z);
+    scene.add(s);
+  });
+  // Load axis title
+  const loadTitle = makeTextSprite('Load', { color: '#4fc3f7', bold: true, fontSize: 22, scale: 0.9 });
+  loadTitle.position.set(-0.7, -0.5, GRID_D / 2);
+  scene.add(loadTitle);
+
+  // AFR labels on Y axis
+  [11, 12, 13, 14, 15].forEach(afr => {
+    const y = afrToY(afr);
+    const s = makeTextSprite(afr.toFixed(1), { fontSize: 16, scale: 0.55 });
+    s.position.set(-0.4, y, -0.15);
+    scene.add(s);
+    // tick line
+    const tickMat = new THREE.LineBasicMaterial({ color: 0x2a4a6c, transparent: true, opacity: 0.3 });
+    const pts = [new THREE.Vector3(-0.05, y, 0), new THREE.Vector3(GRID_W, y, 0)];
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    scene.add(new THREE.Line(geo, tickMat));
+  });
+  const afrTitle = makeTextSprite('AFR', { color: '#4fc3f7', bold: true, fontSize: 22, scale: 0.8 });
+  afrTitle.position.set(-0.65, AFR_HEIGHT / 2, -0.3);
+  scene.add(afrTitle);
+
+  // AFR value labels floating above each cell center
+  const rows = afrMap.length, cols = afrMap[0].length;
+  for (let ri = 0; ri < rows; ri++) {
+    for (let ci = 0; ci < cols; ci++) {
+      const afr = afrMap[ri][ci];
+      const x = ci * GRID_W / (cols - 1);
+      const z = ri * GRID_D / (rows - 1);
+      const y = afrToY(afr) + 0.12;
+      const s = makeTextSprite(afr.toFixed(1), { fontSize: 15, scale: 0.38, color: '#ffffff', bold: true });
+      s.position.set(x, y, z);
+      s.userData.isAfrLabel = true;
+      s.userData.row = ri;
+      s.userData.col = ci;
+      scene.add(s);
+    }
   }
 }
 
-let activeCondition = -1;
+function updateHighlight() {
+  // Remove old highlight
+  if (hlMesh) { scene.remove(hlMesh); hlMesh = null; }
 
-function drawAfrHeatmap() {
-  const canvas = $('afrHeatmap');
-  if (!canvas) return;
-  const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  canvas.width = rect.width * dpr;
-  canvas.height = 280 * dpr;
-  canvas.style.height = '280px';
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-  const W = rect.width, H = 280;
-
-  const left = 62, top = 18, right = 14, bottom = 34;
-  const gw = W - left - right, gh = H - top - bottom;
-  const cw = gw / afrRpms.length, ch = gh / afrLoads.length;
-
-  ctx.clearRect(0, 0, W, H);
-
-  // Determine highlighted cells
-  let hlCells = null;
-  if (activeCondition >= 0) {
-    const reg = conditionRegions[activeCondition];
-    hlCells = new Set();
-    afrRpms.forEach((rpm, ci) => {
-      if (rpm >= reg.rpmMin && rpm <= reg.rpmMax) {
-        reg.rows.forEach(ri => hlCells.add(`${ri},${ci}`));
+  // Dim/brighten AFR labels
+  scene.children.forEach(c => {
+    if (c.userData && c.userData.isAfrLabel) {
+      if (activeCondition < 0) {
+        c.material.opacity = 1;
+      } else {
+        const reg = conditionRegions[activeCondition];
+        const rpm = afrRpms[c.userData.col];
+        const inRegion = rpm >= reg.rpmMin && rpm <= reg.rpmMax && reg.rows.includes(c.userData.row);
+        c.material.opacity = inRegion ? 1 : 0.15;
       }
-    });
-  }
-
-  // Draw cells
-  for (let ri = 0; ri < afrLoads.length; ri++) {
-    for (let ci = 0; ci < afrRpms.length; ci++) {
-      const x = left + ci * cw, y = top + ri * ch;
-      const afr = afrMap[ri][ci];
-      const dimmed = hlCells && !hlCells.has(`${ri},${ci}`);
-
-      ctx.fillStyle = afrColor(afr);
-      ctx.globalAlpha = dimmed ? 0.15 : 1;
-      ctx.fillRect(x + 1, y + 1, cw - 2, ch - 2);
-
-      // AFR text
-      ctx.globalAlpha = dimmed ? 0.2 : 1;
-      ctx.fillStyle = '#000';
-      ctx.font = `bold ${cw > 46 ? 13 : 11}px -apple-system, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(afr.toFixed(1), x + cw / 2, y + ch / 2);
     }
-  }
-  ctx.globalAlpha = 1;
-
-  // Highlight border around active region
-  if (hlCells && activeCondition >= 0) {
-    const reg = conditionRegions[activeCondition];
-    const minC = afrRpms.findIndex(r => r >= reg.rpmMin);
-    const maxC = afrRpms.length - 1 - [...afrRpms].reverse().findIndex(r => r <= reg.rpmMax);
-    const minR = Math.min(...reg.rows), maxR = Math.max(...reg.rows);
-    ctx.strokeStyle = '#4fc3f7';
-    ctx.lineWidth = 2.5;
-    ctx.setLineDash([6, 3]);
-    ctx.strokeRect(left + minC * cw, top + minR * ch, (maxC - minC + 1) * cw, (maxR - minR + 1) * ch);
-    ctx.setLineDash([]);
-  }
-
-  // Y-axis labels (load)
-  ctx.fillStyle = '#888';
-  ctx.font = '11px -apple-system, sans-serif';
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'middle';
-  afrLoads.forEach((l, i) => ctx.fillText(l, left - 6, top + i * ch + ch / 2));
-
-  // X-axis labels (RPM)
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  afrRpms.forEach((r, i) => {
-    if (i % 2 === 0 || cw > 44) ctx.fillText(r, left + i * cw + cw / 2, top + gh + 6);
   });
 
-  // Axis titles
-  ctx.fillStyle = '#4fc3f7';
-  ctx.font = '11px -apple-system, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('RPM', left + gw / 2, H - 2);
-  ctx.save();
-  ctx.translate(12, top + gh / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.fillText('Load', 0, 0);
-  ctx.restore();
-
-  // Legend bar
-  const bar = $('afrLegendBar');
-  if (bar) {
-    bar.style.background = 'linear-gradient(to right, rgb(255,70,30), rgb(255,170,60), rgb(135,230,100), rgb(65,190,160))';
+  if (activeCondition < 0) {
+    surfaceMesh.material.opacity = 0.92;
+    return;
   }
+
+  // Build highlight box
+  const reg = conditionRegions[activeCondition];
+  const cols = afrMap[0].length, rows = afrMap.length;
+  const minC = afrRpms.findIndex(r => r >= reg.rpmMin);
+  const maxC = afrRpms.length - 1 - [...afrRpms].reverse().findIndex(r => r <= reg.rpmMax);
+  const minR = Math.min(...reg.rows), maxR = Math.max(...reg.rows);
+
+  const x0 = minC * GRID_W / (cols - 1), x1 = maxC * GRID_W / (cols - 1);
+  const z0 = minR * GRID_D / (rows - 1), z1 = maxR * GRID_D / (rows - 1);
+
+  // Find Y range in region
+  let yMin = Infinity, yMax = -Infinity;
+  for (let ri = minR; ri <= maxR; ri++) {
+    for (let ci = minC; ci <= maxC; ci++) {
+      const y = afrToY(afrMap[ri][ci]);
+      yMin = Math.min(yMin, y); yMax = Math.max(yMax, y);
+    }
+  }
+
+  // Glowing wireframe box around region
+  const pad = 0.02;
+  const boxPts = [
+    // Bottom rectangle
+    new THREE.Vector3(x0 - pad, -pad, z0 - pad),
+    new THREE.Vector3(x1 + pad, -pad, z0 - pad),
+    new THREE.Vector3(x1 + pad, -pad, z1 + pad),
+    new THREE.Vector3(x0 - pad, -pad, z1 + pad),
+    new THREE.Vector3(x0 - pad, -pad, z0 - pad),
+    // Up to top
+    new THREE.Vector3(x0 - pad, yMax + 0.15, z0 - pad),
+    new THREE.Vector3(x1 + pad, yMax + 0.15, z0 - pad),
+    new THREE.Vector3(x1 + pad, yMax + 0.15, z1 + pad),
+    new THREE.Vector3(x0 - pad, yMax + 0.15, z1 + pad),
+    new THREE.Vector3(x0 - pad, yMax + 0.15, z0 - pad),
+  ];
+  const boxGeo = new THREE.BufferGeometry().setFromPoints(boxPts);
+  hlMesh = new THREE.Line(boxGeo, new THREE.LineBasicMaterial({ color: 0x4fc3f7, linewidth: 2 }));
+  scene.add(hlMesh);
+
+  // Also add verticals
+  const vertPts = [
+    [new THREE.Vector3(x1 + pad, -pad, z0 - pad), new THREE.Vector3(x1 + pad, yMax + 0.15, z0 - pad)],
+    [new THREE.Vector3(x1 + pad, -pad, z1 + pad), new THREE.Vector3(x1 + pad, yMax + 0.15, z1 + pad)],
+    [new THREE.Vector3(x0 - pad, -pad, z1 + pad), new THREE.Vector3(x0 - pad, yMax + 0.15, z1 + pad)],
+  ];
+  vertPts.forEach(pts => {
+    const g = new THREE.BufferGeometry().setFromPoints(pts);
+    const l = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0x4fc3f7 }));
+    l.userData.isHighlight = true;
+    hlMesh.add(l);
+  });
+
+  surfaceMesh.material.opacity = 0.5;
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+
+function setView(name) {
+  switch (name) {
+    case 'angle': camTheta = 0.8; camPhi = 0.55; camDist = 8.5; break;
+    case 'top':   camTheta = 0; camPhi = 0.05; camDist = 9; break;
+    case 'front': camTheta = 0; camPhi = 0.35; camDist = 9; break;
+    case 'side':  camTheta = Math.PI / 2; camPhi = 0.35; camDist = 9; break;
+  }
+  updateCamera();
 }
 
 // Row click → highlight
@@ -758,22 +1028,25 @@ document.querySelector('.afr-matrix')?.querySelector('tbody')?.addEventListener(
     activeCondition = idx;
     tr.classList.add('afr-active');
   }
-  drawAfrHeatmap();
+  updateHighlight();
 });
 
-// Click canvas to clear
-$('afrHeatmap')?.addEventListener('click', () => {
-  activeCondition = -1;
-  document.querySelectorAll('.afr-matrix tbody tr').forEach(r => r.classList.remove('afr-active'));
-  drawAfrHeatmap();
-});
+// Resize handler
+function resizeAfrScene() {
+  const container = $('afrScene');
+  if (!container || !renderer) return;
+  const W = container.clientWidth;
+  renderer.setSize(W, 380);
+  camera.aspect = W / 380;
+  camera.updateProjectionMatrix();
+}
 
 // ══════════ EVENTS ══════════
 
 document.querySelectorAll('input, select').forEach(el => { el.addEventListener('input', calculate); el.addEventListener('change', calculate); });
-window.addEventListener('resize', () => { calculate(); drawAfrHeatmap(); });
+window.addEventListener('resize', () => { calculate(); resizeAfrScene(); });
 calculate();
-drawAfrHeatmap();
+initAfrScene();
 </script>
 </body>
 </html>
