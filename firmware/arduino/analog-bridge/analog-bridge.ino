@@ -2,6 +2,8 @@
  *  Analog Bridge - Datalogger for 1969 Chevrolet Nova 454 BBC
  *  Evolved from CarDuino v1.2
  */
+#define FW_VERSION "0.9.0"
+
 #include <SPI.h>
 #include <SD.h>
 #include <NMEAGPS.h>
@@ -98,6 +100,8 @@ static SensorData data = {};
 
 // Logging File variables
 File logFile;
+static uint8_t sdErrorCount = 0;        // consecutive flush errors
+#define SD_MAX_ERRORS  3                 // auto-stop after this many
 
 // Timestamps
 unsigned long lastGPS = 0;
@@ -125,6 +129,8 @@ enum ISP2State { ISP2_SYNC_HIGH, ISP2_SYNC_LOW, ISP2_READING_PAYLOAD };
 static ISP2State isp2State      = ISP2_SYNC_HIGH;
 static int       isp2BytesRead    = 0;
 static int       isp2BytesExpected = 0;
+static unsigned long isp2LastByte = 0;     // timestamp of last byte received
+#define ISP2_TIMEOUT_MS  200               // resync if payload stalls this long
 
 // Aux channel voltage-to-unit conversions (tune for your sensors)
 // TODO: Replace with actual thermistor curve (Steinhart-Hart or lookup table)
@@ -219,6 +225,7 @@ static void openLogFile();  // forward declaration
 static void startRecording() {
   isRecording = true;
   startRecord = millis();
+  sdErrorCount = 0;
   openLogFile();
   if (!logFile) {
     DEBUG_PORT.println(F("ERR: Could not open log file, aborting recording"));
@@ -266,8 +273,11 @@ static void processGPSFix(const gps_fix &fix) {
     sprintf(datebuf, "%02d/%02d/%02d %02d:%02d:%02d ",
             fix.dateTime.date, fix.dateTime.month, fix.dateTime.year,
             localHour, fix.dateTime.minutes, fix.dateTime.seconds);
+    // Filename: DDHHMM — day(2), hour(2), minute(2) = 6 chars
+    // With "_N.csv" suffix: "DDHHMM_N.csv" = 8.3 FAT compliant
+    // Adding minutes eliminates same-hour filename collisions
     sprintf(filenameBuf, "%02d%02d%02d",
-            fix.dateTime.month, fix.dateTime.date, localHour);
+            fix.dateTime.date, localHour, fix.dateTime.minutes);
 
 #ifdef GPS_DEBUG
     DEBUG_PORT.print(F("GPS Time: "));
@@ -455,8 +465,16 @@ static void readISP2() {
   long tm0 = millis();
 #endif
 
+  // Watchdog: if stuck mid-payload for too long, resync
+  // This catches ISP2 cable disconnects or corrupted streams
+  if (isp2State == ISP2_READING_PAYLOAD &&
+      (millis() - isp2LastByte > ISP2_TIMEOUT_MS)) {
+    isp2State = ISP2_SYNC_HIGH;
+  }
+
   while (isp2Serial.available() > 0) {
     byte b = isp2Serial.read();
+    isp2LastByte = millis();
 
     switch (isp2State) {
       case ISP2_SYNC_HIGH:
@@ -661,6 +679,20 @@ static void writeToLog() {
     // Flush every 1 second instead of every row
     if (millis() - lastFlush > 1000) {
       logFile.flush();
+      // SD library sets write error flag on failure
+      if (logFile.getWriteError()) {
+        sdErrorCount++;
+        logFile.clearWriteError();
+        DEBUG_PORT.print(F("ERR: SD write fail #"));
+        DEBUG_PORT.println(sdErrorCount);
+        if (sdErrorCount >= SD_MAX_ERRORS) {
+          DEBUG_PORT.println(F("ERR: SD card failed, stopping recording"));
+          stopRecording();
+          return;
+        }
+      } else {
+        sdErrorCount = 0;  // reset on successful flush
+      }
       lastFlush = millis();
     }
   }
@@ -844,27 +876,48 @@ unsigned long nextSample = 0;
 
 void setup() {
   DEBUG_PORT.begin(115200);
-  DEBUG_PORT.println(F("INF: Debug Port - Configured"));
+
+  // Boot banner — immediately identifies firmware on serial connect
+  DEBUG_PORT.println();
+  DEBUG_PORT.println(F("========================================="));
+  DEBUG_PORT.println(F("  Analog Bridge  v" FW_VERSION));
+  DEBUG_PORT.println(F("  1969 Nova 454 BBC Datalogger"));
+  DEBUG_PORT.print(F("  Built: ")); DEBUG_PORT.print(F(__DATE__));
+  DEBUG_PORT.print(' ');           DEBUG_PORT.println(F(__TIME__));
+#if defined(__AVR_ATmega2560__)
+  DEBUG_PORT.println(F("  Board: Mega 2560"));
+#elif defined(__AVR_ATmega1280__)
+  DEBUG_PORT.println(F("  Board: Mega 1280"));
+#else
+  DEBUG_PORT.println(F("  Board: Uno/Other"));
+#endif
+  DEBUG_PORT.print(F("  Free SRAM: ")); DEBUG_PORT.print(freeMemory()); DEBUG_PORT.println(F(" bytes"));
+  DEBUG_PORT.println(F("========================================="));
+  DEBUG_PORT.println(F("  Type '?' for commands"));
+  DEBUG_PORT.println();
 
   gpsPort.begin(9600);
-  DEBUG_PORT.println(F("INF: GPS Port - Configured"));
+  DEBUG_PORT.println(F("INF: GPS on " GPS_PORT_NAME " @ 9600"));
 
   isp2Serial.begin(19200);
-  DEBUG_PORT.println(F("INF: ISP2 Port - Configured (19200 baud)"));
+  DEBUG_PORT.println(F("INF: ISP2 @ 19200"));
 
   setupSDCard();
-  DEBUG_PORT.println(F("INF: SDCard - Configured"));
+  DEBUG_PORT.println(F("INF: SD card ready"));
 
   if (mpu9250.begin()) {
     mpu9250Ready = true;
-    DEBUG_PORT.println(F("INF: 9Axis - Configured"));
+    DEBUG_PORT.println(F("INF: MPU9250 OK"));
   } else {
     mpu9250Ready = false;
-    DEBUG_PORT.println(F("ERR: 9Axis - Device error, continuing without IMU"));
+    DEBUG_PORT.println(F("ERR: MPU9250 not found, continuing without IMU"));
   }
 
   pinMode(buttonLedPin, OUTPUT);
   pinMode(buttonPin, INPUT);
+
+  DEBUG_PORT.println(F("INF: Boot complete"));
+  DEBUG_PORT.println();
 
   nextSample = millis();
 }
@@ -877,9 +930,13 @@ void loop() {
   processLed();
   processButtons();
 
+  // Drain ISP2 serial buffer every iteration to prevent overflow.
+  // At 19200 baud the 64-byte hardware buffer fills in ~267ms;
+  // calling only at 80ms intervals risks drops during busy loops.
+  readISP2();
+
   if ((long)(millis() - nextSample) >= 0) {
     nextSample += 80;  // Fixed 80ms interval, no drift
-    readISP2();
     readmpu9250();
     readGPS();
     writeToLog();
