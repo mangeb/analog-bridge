@@ -1,0 +1,18 @@
+{
+  "name": "analog-bridge-dashboard",
+  "version": "2.0.0",
+  "description": "Live monitoring dashboard for Analog Bridge ESP32-S3 datalogger",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node scripts/embed.js",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "tailwindcss": "^4.0.0",
+    "terser": "^5.46.0",
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.0.0"
+  }
+}

@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/* Custom gauge card styling */
+.gauge-card {
+  @apply bg-slate-900 border border-slate-800 rounded-xl p-3 text-center;
+}
+
+.gauge-label {
+  @apply text-xs text-slate-500 uppercase tracking-wider mb-1;
+}
+
+.gauge-value {
+  @apply text-4xl font-bold font-mono tabular-nums leading-none;
+  color: #4fc3f7;
+}
+
+.gauge-unit {
+  @apply text-xs text-slate-600 mt-1;
+}
+
+/* AFR color coding */
+.afr-rich { color: #ef5350; }    /* < 12.0 */
+.afr-target { color: #66bb6a; }  /* 12.5-13.5 */
+.afr-stoich { color: #4fc3f7; }  /* 14.0-15.0 */
+.afr-lean { color: #ffa726; }    /* > 15.5 */
+
+/* Warning thresholds */
+.warn-oil { color: #ef5350; }
+.warn-clt { color: #ef5350; }
+
+/* G-force canvas */
+#g-canvas {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+}

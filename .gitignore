@@ -16,6 +16,11 @@ firmware/arduino/analog-bridge/build/
 .pioenvs/
 .piolibdeps/
 
+# Web UI build artifacts
+firmware/web-ui/node_modules/
+firmware/web-ui/dist/
+firmware/web-ui/.vite/
+
 # Python
 __pycache__/
 *.pyc

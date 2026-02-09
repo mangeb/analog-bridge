@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Analog Bridge</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body class="bg-slate-950 text-slate-200 min-h-screen font-sans antialiased select-none">
+
+  <!-- Status Bar -->
+  <header class="sticky top-0 z-10 bg-slate-900/90 backdrop-blur border-b border-slate-800 px-3 py-2 flex items-center justify-between text-xs">
+    <div class="flex items-center gap-2">
+      <span id="ws-dot" class="w-2 h-2 rounded-full bg-red-500 transition-colors"></span>
+      <span id="ws-status" class="text-slate-500">Connecting...</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="rec-badge" class="hidden px-2 py-0.5 rounded bg-red-600 text-white font-bold tracking-wider animate-pulse">REC</span>
+      <span id="gps-sats" class="text-slate-500">0 sat</span>
+      <span id="heap" class="text-slate-600"></span>
+    </div>
+  </header>
+
+  <main class="max-w-lg mx-auto px-3 py-4 space-y-3">
+
+    <!-- Engine Vitals (the "is it safe" gauges) -->
+    <section class="grid grid-cols-2 gap-3">
+      <div class="gauge-card">
+        <div class="gauge-label">Oil Pressure</div>
+        <div id="oil-val" class="gauge-value">--</div>
+        <div class="gauge-unit">psi</div>
+      </div>
+      <div class="gauge-card">
+        <div class="gauge-label">Coolant</div>
+        <div id="clt-val" class="gauge-value">--</div>
+        <div class="gauge-unit">&deg;F</div>
+      </div>
+    </section>
+
+    <!-- AFR -->
+    <section class="grid grid-cols-2 gap-3">
+      <div class="gauge-card">
+        <div class="gauge-label">AFR Bank 1</div>
+        <div id="afr1-val" class="gauge-value afr-stoich">--</div>
+      </div>
+      <div class="gauge-card">
+        <div class="gauge-label">AFR Bank 2</div>
+        <div id="afr2-val" class="gauge-value afr-stoich">--</div>
+      </div>
+    </section>
+
+    <!-- Speed + MAP -->
+    <section class="grid grid-cols-3 gap-3">
+      <div class="gauge-card col-span-1">
+        <div class="gauge-label">VSS</div>
+        <div id="vss-val" class="gauge-value text-3xl">--</div>
+        <div class="gauge-unit">mph</div>
+      </div>
+      <div class="gauge-card col-span-1">
+        <div class="gauge-label">GPS Speed</div>
+        <div id="gps-spd-val" class="gauge-value text-3xl">--</div>
+        <div class="gauge-unit">mph</div>
+      </div>
+      <div class="gauge-card col-span-1">
+        <div class="gauge-label">MAP</div>
+        <div id="map-val" class="gauge-value text-3xl">--</div>
+        <div class="gauge-unit">"Hg</div>
+      </div>
+    </section>
+
+    <!-- G-Force -->
+    <section class="gauge-card">
+      <div class="gauge-label">G-Force</div>
+      <div class="flex items-center justify-center gap-4">
+        <canvas id="g-canvas" width="140" height="140" class="rounded-lg"></canvas>
+        <div class="text-sm space-y-1">
+          <div>Lat: <span id="g-lat" class="font-mono">0.00</span>g</div>
+          <div>Fwd: <span id="g-fwd" class="font-mono">0.00</span>g</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- IMU Detail (collapsible) -->
+    <details class="gauge-card">
+      <summary class="gauge-label cursor-pointer">IMU Detail</summary>
+      <div class="grid grid-cols-3 gap-2 mt-2 text-xs font-mono">
+        <div>Acc X: <span id="imu-ax">--</span></div>
+        <div>Acc Y: <span id="imu-ay">--</span></div>
+        <div>Acc Z: <span id="imu-az">--</span></div>
+        <div>Gyr X: <span id="imu-gx">--</span></div>
+        <div>Gyr Y: <span id="imu-gy">--</span></div>
+        <div>Gyr Z: <span id="imu-gz">--</span></div>
+        <div>Mag X: <span id="imu-mx">--</span></div>
+        <div>Mag Y: <span id="imu-my">--</span></div>
+        <div>Mag Z: <span id="imu-mz">--</span></div>
+        <div class="col-span-3">IMU Temp: <span id="imu-tmp">--</span>&deg;C</div>
+      </div>
+    </details>
+
+    <!-- Recording Info -->
+    <div id="rec-info" class="hidden gauge-card text-xs">
+      <div class="flex justify-between">
+        <span>File: <span id="rec-file" class="font-mono">--</span></span>
+        <span><span id="rec-rows">0</span> rows</span>
+      </div>
+      <div class="flex justify-between mt-1">
+        <span>Duration: <span id="rec-dur">0.0</span>s</span>
+        <span>Keyframes: <span id="rec-kf">0</span></span>
+      </div>
+    </div>
+
+  </main>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
