@@ -4,7 +4,7 @@
 - **Block:** Chevrolet Big Block (BBC) 454ci (7.4L)
 - **Displacement:** 0.030" over (~457ci)
 - **Bore x Stroke:** 4.280" x 4.000"
-- **Compression Ratio:** 10.6:1 (measured: 110cc chamber, 26cc dome, .020" deck, .038" gasket)
+- **Compression Ratio:** 10.6:1 (110cc chamber, 26cc dome, .020" deck, .039" gasket)
 - **Pistons:** SRP 212142, forged 4032 alloy, 4.280" bore, 1.395" compression height, 26cc dome, 0.990" wrist pin (5115 steel, 2.930" long, ~150g), rings 1/16-1/16-3/16, ~588g, CNC dome with radiused valve reliefs, fits Edelbrock open-chamber heads
 - **Rings:** Sportsman JEP-S100S8-42805
 - **Connecting Rods:** Eagle ESP-63853D, 4340 forged H-beam, 6.385" center-to-center, 2.200" journal, 0.990" pin, ARP 8740 bolts, ~785g
@@ -31,7 +31,7 @@
 - **Valve Spring OD/ID:** 1.55" / 0.805", coil bind 1.15"
 - **Rocker Stud:** 7/16"
 - **Deck Clearance:** 0.020"
-- **Head Gasket:** .038" compressed
+- **Head Gasket:** Edelbrock #7302, steel core laminate (Fel-Pro), 4.370" bore, .039" compressed, 9.70 cc
 - **Valve Covers:** Moroso #6896, cast aluminum, ARP stainless bolts (400-7508)
 
 ## Cam
