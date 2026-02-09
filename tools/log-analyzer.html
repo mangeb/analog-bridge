@@ -211,6 +211,7 @@ td:first-child { text-align: left; color: #aaa; }
       <div class="card-body" id="filterBody">
         <div class="filter-bar" id="filterBar">
           <label><input type="checkbox" id="fltTraction" onchange="rebuildChart()" checked> Traction loss markers</label>
+          <label><input type="checkbox" id="fltOnTarget" onchange="rebuildChart()" checked> AFR on-target strip</label>
           <label><input type="checkbox" id="fltGpsStale" onchange="rebuildChart()"> Flag GPS stale</label>
           <label>Slip threshold: <input type="range" id="slipThreshold" min="1" max="15" value="5" style="width:80px" oninput="document.getElementById('slipThVal').textContent=this.value"><span id="slipThVal" style="color:#4fc3f7;min-width:20px">5</span> mph</label>
         </div>
@@ -743,6 +744,43 @@ function buildChart() {
     }
   };
 
+  // AFR on-target strip plugin — draws colored bar at bottom of chart
+  const onTargetPlugin = {
+    id: 'onTarget',
+    afterDraw(chart) {
+      if (!document.getElementById('fltOnTarget')?.checked) return;
+      const { ctx, chartArea: { left, right, bottom }, scales: { x } } = chart;
+      if (!x || !smoothedRows.length) return;
+      ctx.save();
+      const stripH = 6;
+      const y = bottom - stripH;
+      for (let i = 0; i < smoothedRows.length; i++) {
+        const r = smoothedRows[i];
+        const raw = rows[i];
+        if (!r || !raw) continue;
+        const px = x.getPixelForValue(i);
+        const nextPx = i < smoothedRows.length - 1 ? x.getPixelForValue(i + 1) : px + 1;
+        const w = Math.max(1, nextPx - px + 0.5);
+        const afrC = (r.afr + r.afr1) / 2;
+        const cond = CONDITIONS[raw.condition] || CONDITIONS.UNKNOWN;
+        const lo = cond.afr[0], hi = cond.afr[1];
+        let color;
+        if (afrC >= lo && afrC <= hi) {
+          color = '#66bb6a'; // green — on target
+        } else if (afrC >= lo - 0.5 && afrC <= hi + 0.5) {
+          color = '#ffa726'; // yellow — close
+        } else {
+          color = '#ef5350'; // red — off target
+        }
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.85;
+        ctx.fillRect(px, y, w, stripH);
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+  };
+
   chart = new Chart(ctx, {
     type: 'line',
     data: { datasets: [] },
@@ -757,8 +795,9 @@ function buildChart() {
       scales: {
         x: { type: 'linear', display: true, ticks: { callback: v => fmtTime(smoothedRows[Math.round(v)]?.time || 0), color: '#666', maxTicksLimit: 10 }, grid: { color: '#1a3a5c33' } },
       },
+      layout: { padding: { bottom: 8 } },
     },
-    plugins: [condBgPlugin, cursorPlugin, keyframePlugin, tractionPlugin],
+    plugins: [condBgPlugin, onTargetPlugin, cursorPlugin, keyframePlugin, tractionPlugin],
   });
   rebuildChart();
 }
@@ -827,7 +866,20 @@ function initMap() {
     maxZoom: 19,
   }).addTo(leafletMap);
 
-  playMarker = L.circleMarker([gpsRows[0].lat, gpsRows[0].lon], { radius: 7, color: '#fff', fillColor: '#4fc3f7', fillOpacity: 1, weight: 2 }).addTo(leafletMap);
+  // Car icon marker with directional rotation
+  const carSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 32" width="24" height="32">
+    <path d="M12 0 L20 10 L20 28 Q20 32 16 32 L8 32 Q4 32 4 28 L4 10 Z" fill="#4fc3f7" stroke="#fff" stroke-width="1.5"/>
+    <circle cx="8" cy="26" r="2" fill="#1a1a2e"/><circle cx="16" cy="26" r="2" fill="#1a1a2e"/>
+    <rect x="6" y="6" width="12" height="8" rx="2" fill="rgba(0,0,0,0.3)"/>
+    <path d="M7 14 L5 18 L19 18 L17 14 Z" fill="rgba(255,255,255,0.15)"/>
+  </svg>`;
+  const carIcon = L.divIcon({
+    className: 'car-marker',
+    html: `<div id="carIconWrap" style="transform:rotate(${gpsRows[0].dir || 0}deg);width:24px;height:32px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.7))">${carSvg}</div>`,
+    iconSize: [24, 32],
+    iconAnchor: [12, 16],
+  });
+  playMarker = L.marker([gpsRows[0].lat, gpsRows[0].lon], { icon: carIcon, zIndexOffset: 1000 }).addTo(leafletMap);
 
   updateMapRoute();
   addKeyframeMarkers();
@@ -1252,8 +1304,12 @@ function updatePlaybackUI() {
     if (tMini) { tMini.className = 'traction-warn ok'; tMini.textContent = 'OK'; }
   }
 
-  // Map marker
-  if (playMarker && raw.lat && raw.lon) playMarker.setLatLng([raw.lat, raw.lon]);
+  // Map marker — update position and rotate car icon to heading
+  if (playMarker && raw.lat && raw.lon) {
+    playMarker.setLatLng([raw.lat, raw.lon]);
+    const wrap = document.getElementById('carIconWrap');
+    if (wrap) wrap.style.transform = `rotate(${raw.dir || 0}deg)`;
+  }
 
   // Chart cursor
   if (chart) chart.update('none');
@@ -1370,15 +1426,15 @@ function drawGG() {
   ctx.textAlign = 'left';
   ctx.fillText('Right', cx + rad - 18, cy + 12);
 
-  // Historical scatter: all points up to playIdx, very faint
-  ctx.globalAlpha = 0.15;
+  // Historical scatter: all points up to playIdx
   for (let i = 0; i <= Math.min(playIdx, rows.length - 1); i++) {
     const row = rows[i];
     const px = cx + (row.accy / GG_MAX_G) * rad;
     const py = cy - (row.accx / GG_MAX_G) * rad;
     const cond = CONDITIONS[row.condition];
     ctx.fillStyle = cond?.color || '#444';
-    ctx.fillRect(px - 1, py - 1, 2, 2);
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI * 2); ctx.fill();
   }
   ctx.globalAlpha = 1;
 
@@ -1397,21 +1453,22 @@ function drawGG() {
   // Trail connecting line
   if (trail.length > 1) {
     ctx.beginPath();
-    ctx.strokeStyle = 'rgba(79,195,247,0.4)';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(79,195,247,0.55)';
+    ctx.lineWidth = 2;
     trail.forEach((p, i) => { if (i === 0) ctx.moveTo(p.px, p.py); else ctx.lineTo(p.px, p.py); });
     ctx.stroke();
   }
 
-  // Trail dots with fading
+  // Trail dots with fading — larger and more visible
   trail.forEach((p, i) => {
     const age = trail.length - 1 - i;
-    const alpha = Math.max(0.08, 1 - age / GG_TRAIL_LEN);
-    const sz = 2 + (1 - age / GG_TRAIL_LEN) * 3;
+    const frac = 1 - age / GG_TRAIL_LEN;
+    const alpha = Math.max(0.15, frac);
+    const sz = 3 + frac * 5;
     ctx.beginPath(); ctx.arc(p.px, p.py, sz, 0, Math.PI * 2);
     const cond = CONDITIONS[p.cond];
     ctx.fillStyle = cond?.color || '#888';
-    ctx.globalAlpha = alpha * 0.6;
+    ctx.globalAlpha = alpha * 0.8;
     ctx.fill();
   });
   ctx.globalAlpha = 1;
@@ -1420,12 +1477,12 @@ function drawGG() {
   if (trail.length > 0) {
     const cur = trail[trail.length - 1];
     // Glow
-    ctx.beginPath(); ctx.arc(cur.px, cur.py, 12, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(79,195,247,0.15)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cur.px, cur.py, 16, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(79,195,247,0.2)'; ctx.fill();
     // Dot
-    ctx.beginPath(); ctx.arc(cur.px, cur.py, 6, 0, Math.PI * 2);
+    ctx.beginPath(); ctx.arc(cur.px, cur.py, 8, 0, Math.PI * 2);
     ctx.fillStyle = '#fff'; ctx.fill();
-    ctx.strokeStyle = '#4fc3f7'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.strokeStyle = '#4fc3f7'; ctx.lineWidth = 2.5; ctx.stroke();
     // G readout near dot
     if (rows[playIdx]) {
       const gLat = rows[playIdx].accy;
