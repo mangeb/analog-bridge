@@ -49,6 +49,18 @@
 - **Cam Plate:** RS-94550
 - **Timing Cover:** Cloyes split cover #9-231
 
+### Previous Cam (2008–2014)
+- **Camshaft:** Edelbrock Performer RPM #7162, hydraulic flat tappet (from #2095 top end kit)
+- **Duration @ .050":** 240° intake / 246° exhaust
+- **Advertised Duration:** 300° intake / 306° exhaust
+- **Valve Lift:** .560" intake / .573" exhaust
+- **Lobe Lift:** .330" intake / .337" exhaust
+- **Lobe Separation Angle:** 112°
+- **Intake Centerline:** 110°
+- **Rocker Ratio:** 1.7:1 (stock ratio)
+- **Type:** Hydraulic flat tappet with included lifters
+- **Replaced:** 2014, upgraded to Rollin' Thunder #2261 hydraulic roller for more lift (.625/.639) and roller reliability
+
 ## Intake
 - **Manifold:** Edelbrock RPM Air-Gap #7561 (oval port, dual plane)
 - **Source:** Edelbrock Top End Kit #2095
