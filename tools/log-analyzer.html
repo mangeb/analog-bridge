@@ -140,6 +140,15 @@ td:first-child { text-align: left; color: #aaa; }
 .vals-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; font-size: 0.75rem; }
 .vals-grid .vl { color: #888; }
 .vals-grid .vv { color: #ccc; font-weight: 500; }
+
+/* Engine sound controls */
+.sound-controls { display: flex; align-items: center; gap: 8px; margin-top: 6px; border-top: 1px solid #1a3a5c; padding-top: 8px; }
+.sound-controls button { background: #0f1a30; border: 1px solid #2a4a6c; color: #e0e0e0; padding: 4px 10px; border-radius: 5px; cursor: pointer; font-size: 0.78rem; }
+.sound-controls button:hover { border-color: #4fc3f7; color: #4fc3f7; }
+.sound-controls button.snd-on { background: #1a3a5c; border-color: #ffa726; color: #ffa726; }
+.sound-controls label { font-size: 0.75rem; color: #888; display: flex; align-items: center; gap: 4px; }
+.sound-controls input[type=range] { width: 70px; }
+.sound-controls .rpm-readout { font-size: 0.8rem; font-weight: 600; color: #ffa726; font-variant-numeric: tabular-nums; min-width: 70px; }
 </style>
 </head>
 <body>
@@ -185,6 +194,11 @@ td:first-child { text-align: left; color: #aaa; }
           <option value="2">2x</option>
           <option value="4">4x</option>
         </select>
+      </div>
+      <div class="sound-controls">
+        <button id="btnSound" onclick="toggleEngineSound()">&#128266; Engine Sound</button>
+        <label>Vol <input type="range" id="sndVolume" min="0" max="100" value="40" oninput="setEngineVolume(this.value)"></label>
+        <span class="rpm-readout" id="rpmReadout">— RPM</span>
       </div>
     </div>
 
@@ -1263,6 +1277,11 @@ function updatePlaybackUI() {
   if (!ggCollapsed) drawGG();
   updateGGStats(raw);
 
+  // Engine sound — update RPM
+  const curRPM = estimateRPM(raw.vss || raw.speed);
+  updateEngineSound(curRPM);
+  if (!engineSoundOn) document.getElementById('rpmReadout').textContent = `${Math.round(curRPM)} RPM`;
+
   // Live values
   updateValsGrid(r, raw);
 }
@@ -1492,6 +1511,150 @@ function exportSegment() {
   a.href = URL.createObjectURL(blob);
   a.download = filename.replace('.csv', '_analyzed.csv');
   a.click();
+}
+
+// ══════════ ENGINE SOUND SYNTHESIZER ══════════
+// Simulates a V8 engine: 4 power strokes per revolution (firing freq = RPM/60*4)
+// Layered: fundamental firing freq + sub-harmonics + exhaust rumble noise
+
+let audioCtx = null, engineSoundOn = false;
+let sndNodes = {}; // oscillator nodes and gains
+
+function initAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function startEngineSound() {
+  initAudioCtx();
+  const master = audioCtx.createGain();
+  const vol = parseInt(document.getElementById('sndVolume')?.value || 40) / 100;
+  master.gain.setValueAtTime(vol * 0.5, audioCtx.currentTime);
+  master.connect(audioCtx.destination);
+
+  // === Layer 1: Primary firing frequency (sawtooth for aggressive V8 bark) ===
+  const osc1 = audioCtx.createOscillator();
+  const gain1 = audioCtx.createGain();
+  osc1.type = 'sawtooth';
+  osc1.frequency.setValueAtTime(46.7, audioCtx.currentTime); // 700 RPM idle: 700/60*4=46.7Hz
+  gain1.gain.setValueAtTime(0.30, audioCtx.currentTime);
+  osc1.connect(gain1);
+  gain1.connect(master);
+  osc1.start();
+
+  // === Layer 2: Sub-harmonic (half firing freq — gives the "loping" V8 idle) ===
+  const osc2 = audioCtx.createOscillator();
+  const gain2 = audioCtx.createGain();
+  osc2.type = 'triangle';
+  osc2.frequency.setValueAtTime(23.3, audioCtx.currentTime); // half of firing freq
+  gain2.gain.setValueAtTime(0.35, audioCtx.currentTime);
+  osc2.connect(gain2);
+  gain2.connect(master);
+  osc2.start();
+
+  // === Layer 3: Second harmonic (2x firing = individual cylinder pulses) ===
+  const osc3 = audioCtx.createOscillator();
+  const gain3 = audioCtx.createGain();
+  osc3.type = 'square';
+  osc3.frequency.setValueAtTime(93.3, audioCtx.currentTime);
+  gain3.gain.setValueAtTime(0.08, audioCtx.currentTime);
+  osc3.connect(gain3);
+  gain3.connect(master);
+  osc3.start();
+
+  // === Layer 4: Low-frequency exhaust throb ===
+  const osc4 = audioCtx.createOscillator();
+  const gain4 = audioCtx.createGain();
+  osc4.type = 'sine';
+  osc4.frequency.setValueAtTime(11.7, audioCtx.currentTime); // quarter firing freq
+  gain4.gain.setValueAtTime(0.20, audioCtx.currentTime);
+  osc4.connect(gain4);
+  gain4.connect(master);
+  osc4.start();
+
+  // === Layer 5: Noise burst — exhaust turbulence & mechanical clatter ===
+  const noiseLen = 2; // seconds of noise buffer
+  const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * noiseLen, audioCtx.sampleRate);
+  const noiseData = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < noiseData.length; i++) noiseData[i] = Math.random() * 2 - 1;
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = noiseBuffer;
+  noise.loop = true;
+  const noiseGain = audioCtx.createGain();
+  noiseGain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+  // Band-pass the noise around firing freq for more realism
+  const noiseBP = audioCtx.createBiquadFilter();
+  noiseBP.type = 'bandpass';
+  noiseBP.frequency.setValueAtTime(80, audioCtx.currentTime);
+  noiseBP.Q.setValueAtTime(1.5, audioCtx.currentTime);
+  noise.connect(noiseBP);
+  noiseBP.connect(noiseGain);
+  noiseGain.connect(master);
+  noise.start();
+
+  // === Master low-pass for muffled big-block character ===
+  // Rewire: disconnect master from dest, put LP between
+  master.disconnect();
+  const lp = audioCtx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(300, audioCtx.currentTime);
+  lp.Q.setValueAtTime(2.0, audioCtx.currentTime);
+  master.connect(lp);
+  lp.connect(audioCtx.destination);
+
+  sndNodes = { master, lp, osc1, gain1, osc2, gain2, osc3, gain3, osc4, gain4, noise, noiseGain, noiseBP };
+  engineSoundOn = true;
+  document.getElementById('btnSound').classList.add('snd-on');
+  document.getElementById('btnSound').textContent = '\u{1F50A} Sound On';
+}
+
+function stopEngineSound() {
+  if (sndNodes.osc1) { sndNodes.osc1.stop(); sndNodes.osc2.stop(); sndNodes.osc3.stop(); sndNodes.osc4.stop(); sndNodes.noise.stop(); }
+  sndNodes = {};
+  engineSoundOn = false;
+  document.getElementById('btnSound').classList.remove('snd-on');
+  document.getElementById('btnSound').textContent = '\u{1F509} Engine Sound';
+}
+
+function toggleEngineSound() {
+  if (engineSoundOn) stopEngineSound(); else startEngineSound();
+}
+
+function setEngineVolume(val) {
+  if (!sndNodes.master) return;
+  const v = (parseInt(val) / 100) * 0.5;
+  sndNodes.master.gain.setTargetAtTime(v, audioCtx.currentTime, 0.05);
+}
+
+function updateEngineSound(rpm) {
+  if (!engineSoundOn || !sndNodes.osc1) return;
+  const t = audioCtx.currentTime;
+  const firingFreq = (rpm / 60) * 4; // 4 power strokes per rev for V8
+
+  // Smoothly ramp frequencies
+  sndNodes.osc1.frequency.setTargetAtTime(firingFreq, t, 0.06);
+  sndNodes.osc2.frequency.setTargetAtTime(firingFreq * 0.5, t, 0.06);
+  sndNodes.osc3.frequency.setTargetAtTime(firingFreq * 2, t, 0.06);
+  sndNodes.osc4.frequency.setTargetAtTime(firingFreq * 0.25, t, 0.06);
+
+  // Noise bandpass tracks firing freq
+  sndNodes.noiseBP.frequency.setTargetAtTime(firingFreq * 1.5, t, 0.08);
+
+  // Dynamic gain: louder at high RPM, sub-harmonic fades, harmonics grow
+  const rpmNorm = Math.min(1, (rpm - 700) / 5500); // 0 at idle, 1 at 6200
+  sndNodes.gain1.gain.setTargetAtTime(0.25 + rpmNorm * 0.15, t, 0.05);
+  sndNodes.gain2.gain.setTargetAtTime(0.35 - rpmNorm * 0.15, t, 0.05); // sub-harmonic fades at high RPM
+  sndNodes.gain3.gain.setTargetAtTime(0.06 + rpmNorm * 0.10, t, 0.05); // harmonics grow
+  sndNodes.gain4.gain.setTargetAtTime(0.20 - rpmNorm * 0.08, t, 0.05);
+  sndNodes.noiseGain.gain.setTargetAtTime(0.03 + rpmNorm * 0.06, t, 0.05); // more noise at high RPM
+
+  // LP filter opens up at higher RPM — engine gets brighter
+  sndNodes.lp.frequency.setTargetAtTime(250 + rpmNorm * 600, t, 0.08);
+
+  // RPM display
+  document.getElementById('rpmReadout').textContent = `${Math.round(rpm)} RPM`;
 }
 
 // ══════════ UTILS ══════════
