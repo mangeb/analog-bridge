@@ -18,18 +18,46 @@
  *    - LED indicator (pin 3) — solid after GPS fix, blinks while recording
  *
  *  Serial commands (115200 baud, type '?' for help):
- *    r/s  start/stop recording    d  toggle live debug
- *    p    sensor snapshot          v  system status
- *    i    ISP2 diagnostics         g  GPS 5Hz    b  GPS 115200 baud
+ *    r/s  start/stop recording    k  insert keyframe marker
+ *    d    toggle live debug        p  sensor snapshot
+ *    v    system status            i  ISP2 diagnostics
+ *    c    calibrate accelerometer  m  calibrate magnetometer
+ *    C    show IMU calibration     E  erase EEPROM calibration
+ *    g    reconfigure GPS (115200 baud + 5Hz)
  *
- *  CSV output (24 columns):
+ *  GPS: auto-configured at boot to 115200 baud + 5Hz (u-blox resets on power
+ *       cycle, so we always reconfigure). Use 'g' to reconfigure after the GPS
+ *       module is power-cycled without rebooting the Mega.
+ *
+ *  Button: short press (<1s) = start/stop recording
+ *          long press  (>1s) = keyframe marker (triple-blink confirms)
+ *
+ *  IMU Calibration:
+ *    Gyroscope  — auto-zeroed every boot (~2.5s, car must be stationary).
+ *                 256 samples averaged; bias subtracted from all readings.
+ *    Accel 'c'  — place sensor on level surface, hold perfectly still.
+ *                 Measures X/Y/Z offset (expects 0g, 0g, 1g at rest).
+ *                 Saved to EEPROM. Re-run after re-mounting the board.
+ *    Mag   'm'  — slowly tumble the sensor through ALL orientations for 15s.
+ *                 Computes hard-iron (offset) and soft-iron (scale) correction
+ *                 so the mag readings form a centered sphere instead of an
+ *                 offset ellipsoid. Saved to EEPROM.
+ *    View  'C'  — prints gyro bias, accel bias, mag bias/scale, axis remap.
+ *    Erase 'E'  — wipes EEPROM calibration; reverts to uncalibrated defaults.
+ *
+ *  Axis remapping (compile-time #defines):
+ *    Maps chip X/Y/Z to car Forward/Right/Down (SAE convention).
+ *    Change AXIS_FWD_IDX/SIGN, AXIS_RIGHT_IDX/SIGN, AXIS_DOWN_IDX/SIGN
+ *    when the sensor board is mounted at a different orientation.
+ *
+ *  CSV output (25 columns):
  *    time, lat, lon, speed, alt, dir, sats,
  *    accx/y/z, rotx/y/z, magx/y/z, imuTemp,
- *    afr, afr1, vss, map, oilp, coolant, gpsStale
+ *    afr, afr1, vss, map, oilp, coolant, gpsStale, keyframe
  *
  *  Repository: github.com/mangeb/analog-bridge
  */
-#define FW_VERSION "0.9.0"
+#define FW_VERSION "1.1.0"
 
 #include <SPI.h>
 #include <SD.h>
@@ -64,7 +92,79 @@
 #endif
 
 #include <Wire.h>
+#include <EEPROM.h>
 #include <FaBo9Axis_MPU9250.h>
+
+//----------------------------------------------------------------
+// IMU Calibration — stored in EEPROM, loaded at boot
+// Run 'c' (accel) or 'm' (mag) via serial to calibrate.
+// Run 'C' to view current values, 'E' to erase and reset.
+//----------------------------------------------------------------
+#define CAL_EEPROM_ADDR  0        // EEPROM start address for calibration block
+#define CAL_MAGIC        0xAB01   // "Analog Bridge" magic — increment to invalidate old data
+#define GYRO_CAL_SAMPLES 256      // samples to average for gyro zero (at boot, ~2.5s)
+
+struct IMUCalibration {
+  uint16_t magic;                 // must match CAL_MAGIC or struct is ignored
+  // Gyro bias (auto-zeroed every boot — NOT stored in EEPROM)
+  // kept here for runtime convenience
+  float gyroBias[3];              // dps offset (subtracted from raw)
+  // Accelerometer offset — zeroed on level surface, 'c' command
+  float accelBias[3];             // g offset (subtracted from raw)
+  // Magnetometer hard-iron offset — min/max tumble cal, 'm' command
+  float magBias[3];               // uT offset (subtracted from raw)
+  // Magnetometer soft-iron scale — normalizes to sphere
+  float magScale[3];              // multiplier per axis (nominally 1.0)
+};
+static IMUCalibration cal = {};
+
+// Load calibration from EEPROM; returns true if valid data found
+static bool loadCalibration() {
+  EEPROM.get(CAL_EEPROM_ADDR, cal);
+  if (cal.magic != CAL_MAGIC) {
+    // No valid data — zero everything
+    memset(&cal, 0, sizeof(cal));
+    cal.magScale[0] = cal.magScale[1] = cal.magScale[2] = 1.0f;
+    return false;
+  }
+  // Gyro bias is always re-zeroed at boot, don't trust EEPROM value
+  cal.gyroBias[0] = cal.gyroBias[1] = cal.gyroBias[2] = 0.0f;
+  return true;
+}
+
+// Save calibration to EEPROM (writes only changed bytes)
+static void saveCalibration() {
+  cal.magic = CAL_MAGIC;
+  EEPROM.put(CAL_EEPROM_ADDR, cal);
+}
+
+// Erase calibration — reset to factory defaults
+static void eraseCalibration() {
+  memset(&cal, 0, sizeof(cal));
+  cal.magScale[0] = cal.magScale[1] = cal.magScale[2] = 1.0f;
+  cal.magic = 0;  // invalidate
+  EEPROM.put(CAL_EEPROM_ADDR, cal);
+}
+
+//----------------------------------------------------------------
+// IMU axis remapping — maps chip orientation to car orientation
+// Change these when the sensor board is mounted differently.
+// Convention: X = forward, Y = right, Z = down (SAE / vehicle dynamics)
+// Sign: +X = forward, +Y = right, +Z = down
+//
+// Default assumes chip X = car forward, Y = car right, Z = car down
+// If your board is rotated, swap/negate axes here. Examples:
+//   Chip rotated 90° CW (looking down): fwd=+chipY, right=-chipX, down=+chipZ
+//   Chip upside-down:                   fwd=+chipX, right=+chipY, down=-chipZ
+//----------------------------------------------------------------
+// Each define: (source_array_index, sign)
+// Index: 0=chipX, 1=chipY, 2=chipZ
+#define AXIS_FWD_IDX    0       // which chip axis is car-forward
+#define AXIS_FWD_SIGN   1.0f    // +1 or -1
+#define AXIS_RIGHT_IDX  1       // which chip axis is car-right
+#define AXIS_RIGHT_SIGN 1.0f
+#define AXIS_DOWN_IDX   2       // which chip axis is car-down
+#define AXIS_DOWN_SIGN  1.0f
 
 //----------------------------------------------------------------
 // ISP2 Serial port
@@ -96,6 +196,196 @@
 FaBo9Axis mpu9250;
 
 //----------------------------------------------------------------
+// IMU Calibration procedures
+// calibrateGyro:  auto-zero at every boot (average 256 samples, ~2.5s)
+// calibrateAccel: serial 'c' — level surface, saves to EEPROM
+// calibrateMag:   serial 'm' — tumble 15s, saves to EEPROM
+//----------------------------------------------------------------
+
+// Gyro auto-zero: average GYRO_CAL_SAMPLES readings at boot.
+// MUST be called while the car is stationary!
+// Takes ~2.5s at default sample rate (10ms between reads).
+static void calibrateGyro() {
+  float sum[3] = {0, 0, 0};
+
+  DEBUG_PORT.print(F("INF: Gyro zero — hold still ("));
+  DEBUG_PORT.print(GYRO_CAL_SAMPLES);
+  DEBUG_PORT.print(F(" samples)..."));
+
+  for (int i = 0; i < GYRO_CAL_SAMPLES; i++) {
+    uint8_t buf[6];
+    Wire.beginTransmission(MPU9250_SLAVE_ADDRESS);
+    Wire.write(0x43);  // GYRO_XOUT_H register
+    Wire.endTransmission(false);
+    Wire.requestFrom((uint8_t)MPU9250_SLAVE_ADDRESS, (uint8_t)6);
+    for (uint8_t j = 0; j < 6 && Wire.available(); j++) {
+      buf[j] = Wire.read();
+    }
+    int16_t gx = ((int16_t)buf[0] << 8) | buf[1];
+    int16_t gy = ((int16_t)buf[2] << 8) | buf[3];
+    int16_t gz = ((int16_t)buf[4] << 8) | buf[5];
+    sum[0] += (float)gx / 131.0;
+    sum[1] += (float)gy / 131.0;
+    sum[2] += (float)gz / 131.0;
+    delay(10);
+  }
+
+  cal.gyroBias[0] = sum[0] / GYRO_CAL_SAMPLES;
+  cal.gyroBias[1] = sum[1] / GYRO_CAL_SAMPLES;
+  cal.gyroBias[2] = sum[2] / GYRO_CAL_SAMPLES;
+
+  DEBUG_PORT.println(F(" done"));
+  DEBUG_PORT.print(F("INF: Gyro bias: "));
+  DEBUG_PORT.print(cal.gyroBias[0], 3); DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(cal.gyroBias[1], 3); DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(cal.gyroBias[2], 3); DEBUG_PORT.println(F(" dps"));
+}
+
+// Accel calibration: average samples on a level surface.
+// At rest the sensor should read (0, 0, 1g). We compute the offset
+// so that after subtraction we get exactly (0, 0, 1g).
+// Stored in EEPROM so it survives power cycles.
+static void calibrateAccel() {
+  const int N = 256;
+  float sum[3] = {0, 0, 0};
+
+  DEBUG_PORT.print(F("INF: Accel cal — place level, hold still ("));
+  DEBUG_PORT.print(N);
+  DEBUG_PORT.print(F(" samples)..."));
+
+  for (int i = 0; i < N; i++) {
+    uint8_t buf[6];
+    Wire.beginTransmission(MPU9250_SLAVE_ADDRESS);
+    Wire.write(MPU9250_ACCEL_XOUT_H);
+    Wire.endTransmission(false);
+    Wire.requestFrom((uint8_t)MPU9250_SLAVE_ADDRESS, (uint8_t)6);
+    for (uint8_t j = 0; j < 6 && Wire.available(); j++) {
+      buf[j] = Wire.read();
+    }
+    int16_t ax = ((int16_t)buf[0] << 8) | buf[1];
+    int16_t ay = ((int16_t)buf[2] << 8) | buf[3];
+    int16_t az = ((int16_t)buf[4] << 8) | buf[5];
+    sum[0] += (float)ax / 16384.0;
+    sum[1] += (float)ay / 16384.0;
+    sum[2] += (float)az / 16384.0;
+    delay(10);
+  }
+
+  // At rest, Z axis should read +1g (sensor facing up) or -1g (facing down).
+  // We subtract the expected value so the bias represents the error only.
+  cal.accelBias[0] = sum[0] / N;         // expect 0g
+  cal.accelBias[1] = sum[1] / N;         // expect 0g
+  cal.accelBias[2] = sum[2] / N - 1.0f;  // expect +1g (chip Z-up)
+
+  saveCalibration();
+  DEBUG_PORT.println(F(" done, saved to EEPROM"));
+  DEBUG_PORT.print(F("INF: Accel bias: "));
+  DEBUG_PORT.print(cal.accelBias[0], 4); DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(cal.accelBias[1], 4); DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(cal.accelBias[2], 4); DEBUG_PORT.println(F(" g"));
+}
+
+// Magnetometer calibration: tumble the sensor through all orientations
+// for ~15 seconds. Records min/max on each axis to compute hard-iron
+// offsets (centering) and soft-iron scale factors (spherify).
+// Results stored in EEPROM.
+static void calibrateMag() {
+  float minV[3] = { 9999,  9999,  9999};
+  float maxV[3] = {-9999, -9999, -9999};
+  const unsigned long duration = 15000;  // 15 seconds
+  unsigned long start = millis();
+  int samples = 0;
+
+  DEBUG_PORT.println(F("INF: Mag cal — slowly tumble sensor through all orientations"));
+  DEBUG_PORT.println(F("INF: You have 15 seconds. Rotate in all axes..."));
+
+  while (millis() - start < duration) {
+    float mx, my, mz;
+    mpu9250.readMagnetXYZ(&mx, &my, &mz);
+
+    if (mx < minV[0]) minV[0] = mx;
+    if (mx > maxV[0]) maxV[0] = mx;
+    if (my < minV[1]) minV[1] = my;
+    if (my > maxV[1]) maxV[1] = my;
+    if (mz < minV[2]) minV[2] = mz;
+    if (mz > maxV[2]) maxV[2] = mz;
+    samples++;
+
+    // Progress dot every 2 seconds
+    if (samples % 200 == 0) DEBUG_PORT.print('.');
+
+    delay(10);
+  }
+
+  DEBUG_PORT.println();
+  DEBUG_PORT.print(F("INF: ")); DEBUG_PORT.print(samples); DEBUG_PORT.println(F(" samples collected"));
+
+  // Hard-iron offset = center of the min/max envelope
+  cal.magBias[0] = (maxV[0] + minV[0]) / 2.0f;
+  cal.magBias[1] = (maxV[1] + minV[1]) / 2.0f;
+  cal.magBias[2] = (maxV[2] + minV[2]) / 2.0f;
+
+  // Soft-iron scale: normalize each axis range to the average range
+  float range[3];
+  range[0] = (maxV[0] - minV[0]) / 2.0f;
+  range[1] = (maxV[1] - minV[1]) / 2.0f;
+  range[2] = (maxV[2] - minV[2]) / 2.0f;
+  float avgRange = (range[0] + range[1] + range[2]) / 3.0f;
+
+  if (avgRange < 1.0f) {
+    DEBUG_PORT.println(F("ERR: Mag range too small — did you rotate the sensor?"));
+    return;
+  }
+
+  cal.magScale[0] = avgRange / range[0];
+  cal.magScale[1] = avgRange / range[1];
+  cal.magScale[2] = avgRange / range[2];
+
+  saveCalibration();
+  DEBUG_PORT.println(F("INF: Mag cal saved to EEPROM"));
+  DEBUG_PORT.print(F("INF: Hard-iron: "));
+  DEBUG_PORT.print(cal.magBias[0], 1); DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(cal.magBias[1], 1); DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(cal.magBias[2], 1); DEBUG_PORT.println(F(" uT"));
+  DEBUG_PORT.print(F("INF: Soft-iron: "));
+  DEBUG_PORT.print(cal.magScale[0], 3); DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(cal.magScale[1], 3); DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(cal.magScale[2], 3); DEBUG_PORT.println();
+}
+
+// Print current calibration values to serial
+static void printCalibration() {
+  DEBUG_PORT.println(F("--- IMU Calibration ---"));
+  bool valid = (cal.magic == CAL_MAGIC);
+  DEBUG_PORT.print(F("EEPROM:     ")); DEBUG_PORT.println(valid ? F("VALID") : F("EMPTY (using defaults)"));
+  DEBUG_PORT.print(F("Gyro bias:  "));
+  DEBUG_PORT.print(cal.gyroBias[0], 3); DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(cal.gyroBias[1], 3); DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(cal.gyroBias[2], 3); DEBUG_PORT.println(F(" dps (auto-zeroed at boot)"));
+  DEBUG_PORT.print(F("Accel bias: "));
+  DEBUG_PORT.print(cal.accelBias[0], 4); DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(cal.accelBias[1], 4); DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(cal.accelBias[2], 4); DEBUG_PORT.println(F(" g"));
+  DEBUG_PORT.print(F("Mag bias:   "));
+  DEBUG_PORT.print(cal.magBias[0], 1); DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(cal.magBias[1], 1); DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(cal.magBias[2], 1); DEBUG_PORT.println(F(" uT"));
+  DEBUG_PORT.print(F("Mag scale:  "));
+  DEBUG_PORT.print(cal.magScale[0], 3); DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(cal.magScale[1], 3); DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(cal.magScale[2], 3); DEBUG_PORT.println();
+  DEBUG_PORT.print(F("Axis remap: fwd="));
+  DEBUG_PORT.print(AXIS_FWD_IDX == 0 ? F("X") : AXIS_FWD_IDX == 1 ? F("Y") : F("Z"));
+  DEBUG_PORT.print(AXIS_FWD_SIGN > 0 ? F("+") : F("-"));
+  DEBUG_PORT.print(F(" right="));
+  DEBUG_PORT.print(AXIS_RIGHT_IDX == 0 ? F("X") : AXIS_RIGHT_IDX == 1 ? F("Y") : F("Z"));
+  DEBUG_PORT.print(AXIS_RIGHT_SIGN > 0 ? F("+") : F("-"));
+  DEBUG_PORT.print(F(" down="));
+  DEBUG_PORT.print(AXIS_DOWN_IDX == 0 ? F("X") : AXIS_DOWN_IDX == 1 ? F("Y") : F("Z"));
+  DEBUG_PORT.println(AXIS_DOWN_SIGN > 0 ? F("+") : F("-"));
+}
+
+//----------------------------------------------------------------
 // GPS (u-blox via NeoGPS)
 //----------------------------------------------------------------
 static NMEAGPS gps;
@@ -109,7 +399,8 @@ static NMEAGPS gps;
 //#define SERIAL_DEBUG 1  // Print every data row to Serial (high bandwidth)
 
 // Runtime debug toggle (controlled by 'd' serial command)
-static bool liveDebug = false;
+#define LIVE_DEBUG_DEFAULT  true   // start with live debug ON (set false for install)
+static bool liveDebug = LIVE_DEBUG_DEFAULT;
 
 //----------------------------------------------------------------
 // Sensor data struct — single source of truth for all readings
@@ -133,8 +424,14 @@ static SensorData data = {};
 
 // Logging
 static File logFile;
+static char logFilename[16] = "";       // current log filename for status display
+static unsigned long logRowCount = 0;   // rows written in current session
 static uint8_t sdErrorCount = 0;        // consecutive flush errors
 #define SD_MAX_ERRORS  3                 // auto-stop after this many
+
+// Keyframe — marks a moment of interest in the log (long-press button)
+static uint16_t keyframeCount = 0;      // increments each long-press, 0 = no mark
+static bool keyframePending = false;     // set true by button handler, cleared by writeToLog
 
 // Timestamps
 static unsigned long lastGPS = 0;
@@ -193,7 +490,8 @@ static unsigned long isp2LastByte = 0;     // timestamp of last byte received
 #define GPS_STALE_MS     2000   // mark GPS stale after this many ms without fix
 #define FLUSH_INTERVAL   1000   // SD card flush interval (ms)
 #define BLINK_INTERVAL   1000   // recording LED blink rate (ms)
-#define DEBOUNCE_MS      500    // button debounce time (ms)
+#define DEBOUNCE_MS      200    // button debounce time (ms)
+#define KEYFRAME_HOLD_MS 1000   // hold button this long for keyframe (ms)
 #define NOFIX_MSG_MS     5000   // GPS no-fix message rate limit (ms)
 #define SAMPLE_INTERVAL  80     // main loop sample period (ms) = 12.5 Hz
 
@@ -242,6 +540,28 @@ static void sendUBX(const byte *cmd, size_t len) {
   }
 }
 
+// Configure GPS: switch to 115200 baud, then set 5Hz update rate.
+// Called automatically at boot. Also callable via 'g' serial command
+// to reconfigure after the GPS module is power-cycled without rebooting.
+// Sequence: send baud-switch at 9600 → reopen serial at 115200 → send rate.
+static void configureGPS() {
+  // Step 1: switch module from 9600 → 115200
+  gpsPort.begin(9600);
+  delay(50);
+  sendUBX(UBX_CFG_PRT_115200, sizeof(UBX_CFG_PRT_115200));
+  delay(50);
+
+  // Step 2: reopen our serial port at the new baud rate
+  gpsPort.begin(115200);
+  delay(50);
+
+  // Step 3: set 5Hz update rate (needs 115200 bandwidth)
+  sendUBX(UBX_CFG_RATE_5HZ, sizeof(UBX_CFG_RATE_5HZ));
+  delay(50);
+
+  DEBUG_PORT.println(F("INF: GPS configured — 115200 baud, 5Hz"));
+}
+
 //----------------------------------------------------------------
 //  Print a NeoGPS degE7 (int32 scaled by 1e7) as a decimal degree string
 static void printDegE7(Print &outs, int32_t degE7) {
@@ -270,25 +590,50 @@ static void printDegE7(Print &outs, int32_t degE7) {
 static void openLogFile();  // forward declaration
 
 static void startRecording() {
+  if (isRecording) {
+    DEBUG_PORT.println(F("INF: Already recording"));
+    return;
+  }
   isRecording = true;
   startRecord = millis();
   sdErrorCount = 0;
+  logRowCount = 0;
+  keyframeCount = 0;
+  keyframePending = false;
   openLogFile();
   if (!logFile) {
     DEBUG_PORT.println(F("ERR: SD open failed, recording aborted"));
     isRecording = false;
     return;
   }
-  DEBUG_PORT.println(F("INF: Recording started"));
+  DEBUG_PORT.print(F("INF: Recording -> "));
+  DEBUG_PORT.println(logFilename);
 }
 
 static void stopRecording() {
+  if (!isRecording) {
+    DEBUG_PORT.println(F("INF: Not recording"));
+    return;
+  }
+  unsigned long duration = millis() - startRecord;
   isRecording = false;
   if (logFile) {
+    logFile.flush();
     logFile.close();
-    DEBUG_PORT.println(F("INF: Log file closed"));
   }
-  DEBUG_PORT.println(F("INF: Recording stopped"));
+  // Session summary — the one line you look at after a run
+  DEBUG_PORT.print(F("INF: Stopped — "));
+  printHMS(DEBUG_PORT, duration);
+  DEBUG_PORT.print(F(", "));
+  DEBUG_PORT.print(logRowCount);
+  DEBUG_PORT.print(F(" rows"));
+  if (keyframeCount > 0) {
+    DEBUG_PORT.print(F(", "));
+    DEBUG_PORT.print(keyframeCount);
+    DEBUG_PORT.print(F(" keyframes"));
+  }
+  DEBUG_PORT.print(F(" -> "));
+  DEBUG_PORT.println(logFilename);
 }
 
 //----------------------------------------------------------------
@@ -387,13 +732,15 @@ static void readMPU9250() {
     buf[i] = Wire.read();
   }
 
+  // --- Raw readings in chip frame ---
   // Accelerometer (bytes 0-5) — 2g full scale: raw / 16384.0 = g
   int16_t rawAx = ((int16_t)buf[0]  << 8) | buf[1];
   int16_t rawAy = ((int16_t)buf[2]  << 8) | buf[3];
   int16_t rawAz = ((int16_t)buf[4]  << 8) | buf[5];
-  data.accx = (float)rawAx / 16384.0;
-  data.accy = (float)rawAy / 16384.0;
-  data.accz = (float)rawAz / 16384.0;
+  float chipAcc[3];
+  chipAcc[0] = (float)rawAx / 16384.0 - cal.accelBias[0];
+  chipAcc[1] = (float)rawAy / 16384.0 - cal.accelBias[1];
+  chipAcc[2] = (float)rawAz / 16384.0 - cal.accelBias[2];
 
   // Temperature (bytes 6-7) — degrees Celsius
   int16_t rawTemp = ((int16_t)buf[6] << 8) | buf[7];
@@ -403,14 +750,32 @@ static void readMPU9250() {
   int16_t rawGx = ((int16_t)buf[8]  << 8) | buf[9];
   int16_t rawGy = ((int16_t)buf[10] << 8) | buf[11];
   int16_t rawGz = ((int16_t)buf[12] << 8) | buf[13];
-  data.rotx = (float)rawGx / 131.0;
-  data.roty = (float)rawGy / 131.0;
-  data.rotz = (float)rawGz / 131.0;
+  float chipGyro[3];
+  chipGyro[0] = (float)rawGx / 131.0 - cal.gyroBias[0];
+  chipGyro[1] = (float)rawGy / 131.0 - cal.gyroBias[1];
+  chipGyro[2] = (float)rawGz / 131.0 - cal.gyroBias[2];
 
   // Magnetometer — separate AK8963 I2C device (0x0C)
   // Uses library call for data-ready check, overflow detection,
   // and factory calibration coefficient application
-  mpu9250.readMagnetXYZ(&data.magx, &data.magy, &data.magz);
+  float chipMag[3];
+  mpu9250.readMagnetXYZ(&chipMag[0], &chipMag[1], &chipMag[2]);
+  // Apply hard-iron and soft-iron calibration
+  chipMag[0] = (chipMag[0] - cal.magBias[0]) * cal.magScale[0];
+  chipMag[1] = (chipMag[1] - cal.magBias[1]) * cal.magScale[1];
+  chipMag[2] = (chipMag[2] - cal.magBias[2]) * cal.magScale[2];
+
+  // --- Axis remap: chip frame → car frame ---
+  // Car convention: X=forward, Y=right, Z=down
+  data.accx = chipAcc[AXIS_FWD_IDX]   * AXIS_FWD_SIGN;
+  data.accy = chipAcc[AXIS_RIGHT_IDX] * AXIS_RIGHT_SIGN;
+  data.accz = chipAcc[AXIS_DOWN_IDX]  * AXIS_DOWN_SIGN;
+  data.rotx = chipGyro[AXIS_FWD_IDX]   * AXIS_FWD_SIGN;
+  data.roty = chipGyro[AXIS_RIGHT_IDX] * AXIS_RIGHT_SIGN;
+  data.rotz = chipGyro[AXIS_DOWN_IDX]  * AXIS_DOWN_SIGN;
+  data.magx = chipMag[AXIS_FWD_IDX]   * AXIS_FWD_SIGN;
+  data.magy = chipMag[AXIS_RIGHT_IDX] * AXIS_RIGHT_SIGN;
+  data.magz = chipMag[AXIS_DOWN_IDX]  * AXIS_DOWN_SIGN;
 
 #ifdef TIMING_DEBUG
   DEBUG_PORT.print(F("T mpu9250 Start: "));
@@ -603,9 +968,11 @@ static void openLogFile() {
   DEBUG_PORT.println(fname);
   logFile = SD.open(fname, FILE_WRITE);
   if (logFile) {
+    strncpy(logFilename, fname, sizeof(logFilename) - 1);
+    logFilename[sizeof(logFilename) - 1] = '\0';
     logFile.println(datebuf);
-    logFile.println(F("time,lat,lon,speed,alt,dir,sats,accx,accy,accz,rotx,roty,rotz,magx,magy,magz,imuTemp,afr,afr1,vss,map,oilp,coolant,gpsStale"));
-    logFile.println(F("(s),(deg),(deg),(mph),(ft),(deg),(#),(g),(g),(g),(dps),(dps),(dps),(uT),(uT),(uT),(C),(afr),(afr),(mph),(inHgVac),(psig),(F),(flag)"));
+    logFile.println(F("time,lat,lon,speed,alt,dir,sats,accx,accy,accz,rotx,roty,rotz,magx,magy,magz,imuTemp,afr,afr1,vss,map,oilp,coolant,gpsStale,keyframe"));
+    logFile.println(F("(s),(deg),(deg),(mph),(ft),(deg),(#),(g),(g),(g),(dps),(dps),(dps),(uT),(uT),(uT),(C),(afr),(afr),(mph),(inHgVac),(psig),(F),(flag),(#)"));
     logFile.flush();
     lastFlush = millis();
   }
@@ -636,7 +1003,15 @@ static void printRow(Print &out, float now) {
   out.print(data.map);        out.print(',');
   out.print(data.oilp);       out.print(',');
   out.print(data.coolant);    out.print(',');
-  out.println(data.gpsStale ? 1 : 0);
+  out.print(data.gpsStale ? 1 : 0);
+  out.print(',');
+  // Keyframe column: 0 = normal row, N = keyframe marker number
+  if (keyframePending) {
+    out.println(keyframeCount);
+    keyframePending = false;
+  } else {
+    out.println(0);
+  }
 }
 
 // Compact human-readable live debug output, rate-limited to 2Hz.
@@ -722,6 +1097,7 @@ static void writeToLog() {
       return;
     }
     printRow(logFile, now);
+    logRowCount++;
     // Flush every 1 second instead of every row
     if (millis() - lastFlush > FLUSH_INTERVAL) {
       logFile.flush();
@@ -755,17 +1131,47 @@ static void writeToLog() {
 // Serial command handler
 //----------------------------------------------------------------
 static void printStatus() {
-  unsigned long uptime = millis() / 1000;
-  DEBUG_PORT.println(F("--- Analog Bridge Status ---"));
-  DEBUG_PORT.print(F("Uptime: ")); DEBUG_PORT.print(uptime); DEBUG_PORT.println(F("s"));
-  DEBUG_PORT.print(F("Recording: ")); DEBUG_PORT.println(isRecording ? F("YES") : F("NO"));
-  DEBUG_PORT.print(F("GPS fix: ")); DEBUG_PORT.println(data.gpsStale ? F("STALE") : F("OK"));
-  DEBUG_PORT.print(F("GPS sats: ")); DEBUG_PORT.println(data.satellites);
-  DEBUG_PORT.print(F("IMU: ")); DEBUG_PORT.println(mpu9250Ready ? F("OK") : F("FAIL"));
-  DEBUG_PORT.print(F("ISP2 LC1: ")); DEBUG_PORT.print(isp2Lc1Count);
-  DEBUG_PORT.print(F("  Aux: ")); DEBUG_PORT.println(isp2AuxCount);
-  DEBUG_PORT.print(F("Live debug: ")); DEBUG_PORT.println(liveDebug ? F("ON") : F("OFF"));
-  DEBUG_PORT.print(F("Free SRAM: ")); DEBUG_PORT.println(freeMemory());
+  DEBUG_PORT.println(F("--- Analog Bridge v" FW_VERSION " ---"));
+  DEBUG_PORT.print(F("Uptime:    ")); printHMS(DEBUG_PORT, millis()); DEBUG_PORT.println();
+  if (isRecording) {
+    DEBUG_PORT.print(F("Recording: YES — "));
+    printHMS(DEBUG_PORT, millis() - startRecord);
+    DEBUG_PORT.print(F(", ")); DEBUG_PORT.print(logRowCount); DEBUG_PORT.print(F(" rows"));
+    if (keyframeCount > 0) {
+      DEBUG_PORT.print(F(", ")); DEBUG_PORT.print(keyframeCount); DEBUG_PORT.print(F(" KF"));
+    }
+    DEBUG_PORT.print(F(" -> ")); DEBUG_PORT.println(logFilename);
+  } else {
+    DEBUG_PORT.println(F("Recording: NO"));
+  }
+  DEBUG_PORT.print(F("GPS:       ")); DEBUG_PORT.print(data.gpsStale ? F("STALE") : F("OK"));
+  DEBUG_PORT.print(F("  sats=")); DEBUG_PORT.print(data.satellites);
+  DEBUG_PORT.println(F("  115200/5Hz"));
+  DEBUG_PORT.print(F("IMU:       ")); DEBUG_PORT.print(mpu9250Ready ? F("OK") : F("FAIL"));
+  if (mpu9250Ready) {
+    DEBUG_PORT.print(F("  cal="));
+    DEBUG_PORT.print(cal.magic == CAL_MAGIC ? F("YES") : F("NO"));
+  }
+  DEBUG_PORT.println();
+  DEBUG_PORT.print(F("ISP2:      ")); DEBUG_PORT.print(isp2Lc1Count); DEBUG_PORT.print(F(" LC1, "));
+  DEBUG_PORT.print(isp2AuxCount); DEBUG_PORT.println(F(" aux"));
+  DEBUG_PORT.print(F("Debug:     ")); DEBUG_PORT.println(liveDebug ? F("ON") : F("OFF"));
+  DEBUG_PORT.print(F("Free SRAM: ")); DEBUG_PORT.print(freeMemory()); DEBUG_PORT.println(F(" bytes"));
+}
+
+// Print elapsed time as "Xh XXm XXs" (compact, no leading zeros for hours)
+static void printHMS(Print &out, unsigned long ms) {
+  unsigned long totalSec = ms / 1000;
+  unsigned long h = totalSec / 3600;
+  unsigned long m = (totalSec % 3600) / 60;
+  unsigned long s = totalSec % 60;
+  if (h > 0) { out.print(h); out.print(F("h ")); }
+  if (h > 0 || m > 0) {
+    if (h > 0 && m < 10) out.print('0');
+    out.print(m); out.print(F("m "));
+  }
+  if ((h > 0 || m > 0) && s < 10) out.print('0');
+  out.print(s); out.print('s');
 }
 
 // Returns approximate free SRAM (bytes between heap and stack)
@@ -781,14 +1187,22 @@ static void handleSerial() {
     switch (c) {
       case '?':  // Print help
         DEBUG_PORT.println(F("--- Analog Bridge Commands ---"));
-        DEBUG_PORT.println(F("  r  Start recording"));
-        DEBUG_PORT.println(F("  s  Stop recording"));
-        DEBUG_PORT.println(F("  d  Toggle live debug output"));
-        DEBUG_PORT.println(F("  p  Print current sensor snapshot"));
-        DEBUG_PORT.println(F("  v  Print system status"));
-        DEBUG_PORT.println(F("  i  Print ISP2 diagnostics"));
-        DEBUG_PORT.println(F("  g  Set GPS rate to 5Hz"));
-        DEBUG_PORT.println(F("  b  Set GPS baud to 115200"));
+        DEBUG_PORT.println(F(" Recording:"));
+        DEBUG_PORT.println(F("  r  Start recording to SD card"));
+        DEBUG_PORT.println(F("  s  Stop recording (prints session summary)"));
+        DEBUG_PORT.println(F("  k  Insert keyframe marker into log"));
+        DEBUG_PORT.println(F(" Display:"));
+        DEBUG_PORT.println(F("  d  Toggle live debug stream (2Hz)"));
+        DEBUG_PORT.println(F("  p  Sensor snapshot (all values once)"));
+        DEBUG_PORT.println(F("  v  System status (uptime, GPS, IMU, ISP2)"));
+        DEBUG_PORT.println(F("  i  ISP2 diagnostics (AFR, VSS, MAP, OIL, CLT)"));
+        DEBUG_PORT.println(F(" IMU Calibration:"));
+        DEBUG_PORT.println(F("  c  Accel — place level & still, ~2.5s, saves EEPROM"));
+        DEBUG_PORT.println(F("  m  Mag   — tumble all axes 15s, saves EEPROM"));
+        DEBUG_PORT.println(F("  C  Show current gyro/accel/mag cal values"));
+        DEBUG_PORT.println(F("  E  Erase EEPROM cal (revert to defaults)"));
+        DEBUG_PORT.println(F(" GPS:"));
+        DEBUG_PORT.println(F("  g  Reconfigure GPS (115200 baud + 5Hz)"));
         DEBUG_PORT.println(F("  ?  This help"));
         break;
       case 'r':  // Start recording to SD card
@@ -830,18 +1244,19 @@ static void handleSerial() {
       case 'v':  // Print system status
         printStatus();
         break;
-      case 'g':  // Set GPS update rate to 5Hz (200ms)
-        sendUBX(UBX_CFG_RATE_5HZ, sizeof(UBX_CFG_RATE_5HZ));
-        DEBUG_PORT.println(F("INF: GPS rate set to 5Hz"));
+      case 'g':  // Reconfigure GPS (115200 baud + 5Hz)
+        // Useful if GPS module was power-cycled without rebooting the Mega
+        configureGPS();
         break;
-      case 'b':  // Set GPS baud to 115200
-        delay(10);
-        gpsPort.begin(9600);
-        delay(10);
-        sendUBX(UBX_CFG_PRT_115200, sizeof(UBX_CFG_PRT_115200));
-        delay(10);
-        gpsPort.begin(115200);
-        DEBUG_PORT.println(F("INF: GPS baud set to 115200"));
+      case 'k':  // Insert keyframe marker (same as long-press button)
+        if (isRecording) {
+          keyframeCount++;
+          keyframePending = true;
+          DEBUG_PORT.print(F("INF: Keyframe #"));
+          DEBUG_PORT.println(keyframeCount);
+        } else {
+          DEBUG_PORT.println(F("WRN: Not recording — keyframe ignored"));
+        }
         break;
       case 'd':  // Toggle live debug output
         liveDebug = !liveDebug;
@@ -861,6 +1276,31 @@ static void handleSerial() {
         DEBUG_PORT.print(F(" MAP: ")); DEBUG_PORT.print(data.map, 1);
         DEBUG_PORT.print(F(" OIL: ")); DEBUG_PORT.print(data.oilp, 0);
         DEBUG_PORT.print(F(" CLT: ")); DEBUG_PORT.println(data.coolant, 0);
+        break;
+      case 'c':  // Calibrate accelerometer (place sensor level, hold still)
+        if (isRecording) {
+          DEBUG_PORT.println(F("WRN: Stop recording before calibrating"));
+        } else if (!mpu9250Ready) {
+          DEBUG_PORT.println(F("ERR: IMU not available"));
+        } else {
+          calibrateAccel();
+        }
+        break;
+      case 'm':  // Calibrate magnetometer (tumble through all orientations)
+        if (isRecording) {
+          DEBUG_PORT.println(F("WRN: Stop recording before calibrating"));
+        } else if (!mpu9250Ready) {
+          DEBUG_PORT.println(F("ERR: IMU not available"));
+        } else {
+          calibrateMag();
+        }
+        break;
+      case 'C':  // Show current IMU calibration values
+        printCalibration();
+        break;
+      case 'E':  // Erase calibration from EEPROM
+        eraseCalibration();
+        DEBUG_PORT.println(F("INF: Calibration erased from EEPROM"));
         break;
     }
   }
@@ -895,26 +1335,59 @@ static void processLed() {
 
 //----------------------------------------------------------------
 // Button handling
+// Short press (<1s): start/stop recording
+// Long press (>1s):  insert keyframe marker (while recording)
+// LED triple-blink confirms keyframe; prevents accidental stop
 //----------------------------------------------------------------
-static bool buttonReset = false;
-static unsigned long lastButton = 0;
+static bool     buttonDown    = false;   // true while button is held
+static unsigned long buttonDownAt = 0;   // millis() when button was pressed
+static unsigned long lastRelease  = 0;   // for debounce on release
+
+// Quick triple-blink on buttonLedPin to confirm keyframe
+static void blinkKeyframeConfirm() {
+  for (uint8_t i = 0; i < 3; i++) {
+    digitalWrite(buttonLedPin, LOW);
+    delay(60);
+    digitalWrite(buttonLedPin, HIGH);
+    delay(60);
+  }
+}
 
 static void processButtons() {
-  bool buttonState = digitalRead(buttonPin);
+  bool pressed = (digitalRead(buttonPin) == HIGH);
 
-  if (buttonState == HIGH && !isRecording && !buttonReset) {
-    DEBUG_PORT.println(F("INF: Button press — start"));
-    startRecording();
-    buttonReset = true;
-    lastButton = millis();
-  } else if (buttonState == HIGH && isRecording && !buttonReset) {
-    DEBUG_PORT.println(F("INF: Button press — stop"));
-    stopRecording();
-    buttonReset = true;
-    lastButton = millis();
-    digitalWrite(buttonLedPin, HIGH);
-  } else if (buttonState == LOW && buttonReset && (millis() - lastButton > DEBOUNCE_MS)) {
-    buttonReset = false;
+  // --- Button just pressed (rising edge) ---
+  if (pressed && !buttonDown) {
+    if (millis() - lastRelease < DEBOUNCE_MS) return;  // debounce
+    buttonDown = true;
+    buttonDownAt = millis();
+  }
+
+  // --- Button just released (falling edge) ---
+  if (!pressed && buttonDown) {
+    buttonDown = false;
+    lastRelease = millis();
+    unsigned long held = millis() - buttonDownAt;
+
+    if (held >= KEYFRAME_HOLD_MS && isRecording) {
+      // Long press while recording → keyframe marker
+      keyframeCount++;
+      keyframePending = true;
+      DEBUG_PORT.print(F("INF: Keyframe #"));
+      DEBUG_PORT.println(keyframeCount);
+      blinkKeyframeConfirm();
+    } else if (held < KEYFRAME_HOLD_MS) {
+      // Short press → toggle recording
+      if (!isRecording) {
+        DEBUG_PORT.println(F("INF: Button press — start"));
+        startRecording();
+      } else {
+        DEBUG_PORT.println(F("INF: Button press — stop"));
+        stopRecording();
+        digitalWrite(buttonLedPin, HIGH);  // restore solid LED after fix
+      }
+    }
+    // Long press while NOT recording is intentionally ignored
   }
 }
 
@@ -945,8 +1418,9 @@ void setup() {
   DEBUG_PORT.println(F("  Type '?' for commands"));
   DEBUG_PORT.println();
 
-  gpsPort.begin(9600);
-  DEBUG_PORT.println(F("INF: GPS on " GPS_PORT_NAME " @ 9600"));
+  // GPS auto-configure: 9600 → 115200 baud, then 5Hz update rate.
+  // u-blox resets to 9600 on every power cycle, so we always reconfigure.
+  configureGPS();
 
   isp2Serial.begin(19200);
   DEBUG_PORT.println(F("INF: ISP2 @ 19200"));
@@ -957,6 +1431,16 @@ void setup() {
   if (mpu9250.begin()) {
     mpu9250Ready = true;
     DEBUG_PORT.println(F("INF: MPU9250 OK"));
+
+    // Load accel/mag calibration from EEPROM
+    if (loadCalibration()) {
+      DEBUG_PORT.println(F("INF: EEPROM calibration loaded"));
+    } else {
+      DEBUG_PORT.println(F("INF: No EEPROM calibration (use 'c'/'m' to calibrate)"));
+    }
+
+    // Auto-zero gyroscope — car must be stationary during boot
+    calibrateGyro();
   } else {
     mpu9250Ready = false;
     DEBUG_PORT.println(F("ERR: MPU9250 not found, continuing without IMU"));
