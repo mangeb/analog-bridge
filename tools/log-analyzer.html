@@ -81,6 +81,8 @@ h1 { font-size: 1.4rem; color: #4fc3f7; margin-bottom: 2px; }
 .card-body { overflow: hidden; transition: max-height 0.3s ease; }
 .card-body.collapsed { max-height: 0 !important; padding-top: 0; padding-bottom: 0; }
 .card-summary { font-size: 0.85rem; color: #ccc; margin-top: 6px; }
+.card-summary.hidden { display: none !important; }
+.card-summary:not(.hidden) { display: block !important; }
 
 /* Traction / filter indicators */
 .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
@@ -214,11 +216,17 @@ td:first-child { text-align: left; color: #aaa; }
         <h2>AFR Status</h2>
         <span class="toggle-arrow open" id="afrBody_arrow">&#9656;</span>
       </div>
-      <!-- Summary shown when collapsed -->
-      <div class="card-summary hidden" id="afrBody_summary">
-        <span style="font-size:1.4rem;font-weight:700" id="afrValMini">—</span>
-        <span id="condStatusMini" style="margin-left:8px;font-weight:600">—</span>
-        <span id="condBadgeMini" style="margin-left:8px;padding:2px 8px;border-radius:3px;font-size:0.75rem;font-weight:600">—</span>
+      <!-- Summary shown when collapsed: compact hero bar -->
+      <div class="card-summary hidden" id="afrBody_summary" style="display:none">
+        <div class="afr-hero" style="margin-bottom:0">
+          <div class="reading" id="afrValMini" style="font-size:1.6rem;min-width:60px">—</div>
+          <div class="bar-bg" style="height:14px">
+            <div class="bar-fill" id="afrBarMini"></div>
+            <div class="target-zone" id="afrTargetZoneMini"></div>
+          </div>
+          <span id="condStatusMini" style="font-size:0.8rem;font-weight:600;min-width:60px;text-align:right">—</span>
+          <span id="condBadgeMini" style="padding:2px 8px;border-radius:3px;font-size:0.7rem;font-weight:600;white-space:nowrap">—</span>
+        </div>
       </div>
       <div class="card-body" id="afrBody">
         <!-- Combined: hero gauge -->
@@ -1178,13 +1186,20 @@ function updatePlaybackUI() {
   statusEl.textContent = statusText;
   statusEl.style.color = statusColor;
 
-  // Mini summary for collapsed view
+  // Mini summary for collapsed view (animated bar)
   const miniVal = document.getElementById('afrValMini');
   const miniStatus = document.getElementById('condStatusMini');
   const miniBadge = document.getElementById('condBadgeMini');
   if (miniVal) { miniVal.textContent = afrC.toFixed(2); miniVal.style.color = afrToColor(afrC); }
   if (miniStatus) { miniStatus.textContent = statusText; miniStatus.style.color = statusColor; }
   if (miniBadge) { miniBadge.textContent = cond.label; miniBadge.style.background = cond.color; miniBadge.style.color = '#fff'; }
+  updateAfrBar('afrBarMini', null, afrC);
+  const tgtMini = document.getElementById('afrTargetZoneMini');
+  if (tgtMini) {
+    const lo2 = Math.max(0, ((cond.afr[0] - 10) / 6) * 100);
+    const hi2 = Math.min(100, ((cond.afr[1] - 10) / 6) * 100);
+    tgtMini.style.left = lo2 + '%'; tgtMini.style.width = (hi2 - lo2) + '%';
+  }
 
   // Traction detection
   const { slip, delta } = detectSlip(raw);
@@ -1224,6 +1239,10 @@ function updatePlaybackUI() {
     }
   }
 
+  // G-G diagram (live — only if panel is open)
+  const ggDetails = document.getElementById('ggCanvas')?.closest('details');
+  if (ggDetails?.open) drawGG();
+
   // Live values
   updateValsGrid(r, raw);
 }
@@ -1232,8 +1251,7 @@ function updateAfrBar(barId, valId, afr) {
   const pct = Math.max(0, Math.min(100, ((afr - 10) / 6) * 100));
   const el = document.getElementById(barId);
   if (el) { el.style.width = pct + '%'; el.style.background = afrToColor(afr); }
-  const valEl = document.getElementById(valId);
-  if (valEl) valEl.textContent = afr.toFixed(2);
+  if (valId) { const valEl = document.getElementById(valId); if (valEl) valEl.textContent = afr.toFixed(2); }
 }
 
 // ══════════ LIVE VALUES ══════════
@@ -1272,6 +1290,9 @@ function buildStatsTable() {
 }
 
 // ══════════ G-G DIAGRAM ══════════
+const GG_TRAIL_LEN = 40; // ~3.2s at 12.5Hz
+const GG_MAX_G = 1.0;
+
 function drawGG() {
   const canvas = document.getElementById('ggCanvas');
   if (!canvas) return;
@@ -1281,7 +1302,7 @@ function drawGG() {
   canvas.style.width = size + 'px'; canvas.style.height = size + 'px';
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
-  const cx = size / 2, cy = size / 2, r = size / 2 - 30;
+  const cx = size / 2, cy = size / 2, rad = size / 2 - 30;
 
   ctx.fillStyle = '#0f1a30';
   ctx.fillRect(0, 0, size, size);
@@ -1290,34 +1311,91 @@ function drawGG() {
   [0.25, 0.5, 0.75, 1.0].forEach(g => {
     ctx.strokeStyle = '#1a3a5c';
     ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(cx, cy, r * g, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, rad * g, 0, Math.PI * 2); ctx.stroke();
     ctx.fillStyle = '#555';
     ctx.font = '10px sans-serif';
-    ctx.fillText(g.toFixed(2) + 'g', cx + r * g + 2, cy - 4);
+    ctx.textAlign = 'left';
+    ctx.fillText(g.toFixed(2) + 'g', cx + rad * g + 2, cy - 4);
   });
 
   // Axes
   ctx.strokeStyle = '#2a4a6c';
-  ctx.beginPath(); ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx - rad, cy); ctx.lineTo(cx + rad, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy - rad); ctx.lineTo(cx, cy + rad); ctx.stroke();
 
-  // Labels
-  ctx.fillStyle = '#888'; ctx.font = '11px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('Lateral G (right +)', cx, size - 4);
-  ctx.save(); ctx.translate(10, cy); ctx.rotate(-Math.PI/2); ctx.fillText('Longitudinal G (accel +)', 0, 0); ctx.restore();
+  // Axis labels
+  ctx.fillStyle = '#666'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Braking', cx, cy - rad - 4);
+  ctx.fillText('Accel', cx, cy + rad + 12);
+  ctx.fillText('Left', cx - rad - 2, cy + 12);
+  ctx.textAlign = 'left';
+  ctx.fillText('Right', cx + rad - 18, cy + 12);
 
-  // Plot points
-  const maxG = 1.0;
-  rows.forEach(row => {
-    const lat = row.accy; // lateral
-    const lon = row.accx; // longitudinal
-    const px = cx + (lat / maxG) * r;
-    const py = cy - (lon / maxG) * r;
+  // Historical scatter: all points up to playIdx, very faint
+  ctx.globalAlpha = 0.15;
+  for (let i = 0; i <= Math.min(playIdx, rows.length - 1); i++) {
+    const row = rows[i];
+    const px = cx + (row.accy / GG_MAX_G) * rad;
+    const py = cy - (row.accx / GG_MAX_G) * rad;
     const cond = CONDITIONS[row.condition];
-    ctx.fillStyle = (cond?.color || '#444') + '40';
+    ctx.fillStyle = cond?.color || '#444';
     ctx.fillRect(px - 1, py - 1, 2, 2);
+  }
+  ctx.globalAlpha = 1;
+
+  // Ghost trail: last GG_TRAIL_LEN samples
+  const trailStart = Math.max(0, playIdx - GG_TRAIL_LEN);
+  const trailEnd = Math.min(playIdx, rows.length - 1);
+  const trail = [];
+  for (let i = trailStart; i <= trailEnd; i++) {
+    trail.push({
+      px: cx + (rows[i].accy / GG_MAX_G) * rad,
+      py: cy - (rows[i].accx / GG_MAX_G) * rad,
+      cond: rows[i].condition,
+    });
+  }
+
+  // Trail connecting line
+  if (trail.length > 1) {
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(79,195,247,0.4)';
+    ctx.lineWidth = 1.5;
+    trail.forEach((p, i) => { if (i === 0) ctx.moveTo(p.px, p.py); else ctx.lineTo(p.px, p.py); });
+    ctx.stroke();
+  }
+
+  // Trail dots with fading
+  trail.forEach((p, i) => {
+    const age = trail.length - 1 - i;
+    const alpha = Math.max(0.08, 1 - age / GG_TRAIL_LEN);
+    const sz = 2 + (1 - age / GG_TRAIL_LEN) * 3;
+    ctx.beginPath(); ctx.arc(p.px, p.py, sz, 0, Math.PI * 2);
+    const cond = CONDITIONS[p.cond];
+    ctx.fillStyle = cond?.color || '#888';
+    ctx.globalAlpha = alpha * 0.6;
+    ctx.fill();
   });
+  ctx.globalAlpha = 1;
+
+  // Current position: big bright dot
+  if (trail.length > 0) {
+    const cur = trail[trail.length - 1];
+    // Glow
+    ctx.beginPath(); ctx.arc(cur.px, cur.py, 12, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(79,195,247,0.15)'; ctx.fill();
+    // Dot
+    ctx.beginPath(); ctx.arc(cur.px, cur.py, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.strokeStyle = '#4fc3f7'; ctx.lineWidth = 2; ctx.stroke();
+    // G readout near dot
+    if (rows[playIdx]) {
+      const gLat = rows[playIdx].accy;
+      const gLon = rows[playIdx].accx;
+      const gTotal = Math.sqrt(gLat**2 + gLon**2);
+      ctx.fillStyle = '#ccc'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(`${gTotal.toFixed(2)}g`, cur.px + 10, cur.py - 4);
+    }
+  }
 }
 
 // ══════════ KEYFRAMES ══════════
