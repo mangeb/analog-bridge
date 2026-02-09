@@ -94,6 +94,14 @@ th:first-child { text-align: left; }
 td { text-align: right; padding: 4px 8px; color: #ccc; }
 td:first-child { text-align: left; color: #aaa; }
 
+/* AFR Heatmap */
+.heatmap-wrap { position: relative; }
+#afrHeatmap { width: 100%; border-radius: 6px; }
+.heatmap-info { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 0.75rem; color: #888; }
+.heatmap-legend { display: flex; align-items: center; gap: 4px; }
+.heatmap-legend-bar { width: 120px; height: 8px; border-radius: 3px; }
+.heatmap-cur { font-size: 0.8rem; color: #ccc; font-variant-numeric: tabular-nums; }
+
 /* G-G diagram */
 .gg-wrap { position: relative; width: 100%; max-width: 360px; margin: 0 auto; }
 .gg-wrap canvas { width: 100% !important; }
@@ -170,6 +178,18 @@ td:first-child { text-align: left; color: #aaa; }
         <div class="cond-status" id="condStatus"></div>
       </div>
       <div class="cond-legend" id="condLegend"></div>
+    </div>
+
+    <!-- AFR Heatmap -->
+    <div class="card">
+      <h2>AFR Map — Est. RPM vs Load</h2>
+      <div class="heatmap-wrap">
+        <canvas id="afrHeatmap" height="320"></canvas>
+        <div class="heatmap-info">
+          <div class="heatmap-legend"><span>Rich 11</span><div class="heatmap-legend-bar" id="hmLegendBar"></div><span>15 Lean</span></div>
+          <div class="heatmap-cur" id="hmCurrent">—</div>
+        </div>
+      </div>
     </div>
 
     <!-- GPS Map -->
@@ -439,6 +459,9 @@ function initUI() {
   buildKeyframeList();
   buildStatsTable();
   drawGG();
+  resetHeatmapData();
+  populateHeatmapUpTo(0);
+  drawHeatmap();
   updatePlaybackUI();
 }
 
@@ -517,6 +540,40 @@ function buildChart() {
     }
   };
 
+  // Keyframe markers plugin
+  const keyframePlugin = {
+    id: 'keyframes',
+    afterDraw(chart) {
+      const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
+      if (!x) return;
+      ctx.save();
+      rows.forEach(r => {
+        if (r.keyframe <= 0) return;
+        const px = x.getPixelForValue(r.idx);
+        // Vertical line
+        ctx.strokeStyle = '#ffd54f';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(px, top); ctx.lineTo(px, bottom); ctx.stroke();
+        // Number label
+        ctx.fillStyle = '#1a1a2e';
+        ctx.strokeStyle = '#ffd54f';
+        ctx.lineWidth = 1;
+        const w = 18, h = 14;
+        const bx = px - w/2, by = top - h - 2;
+        ctx.beginPath();
+        if (ctx.roundRect) { ctx.roundRect(bx, by, w, h, 3); }
+        else { ctx.moveTo(bx+3,by); ctx.lineTo(bx+w-3,by); ctx.arcTo(bx+w,by,bx+w,by+3,3); ctx.lineTo(bx+w,by+h-3); ctx.arcTo(bx+w,by+h,bx+w-3,by+h,3); ctx.lineTo(bx+3,by+h); ctx.arcTo(bx,by+h,bx,by+h-3,3); ctx.lineTo(bx,by+3); ctx.arcTo(bx,by,bx+3,by,3); ctx.closePath(); }
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#ffd54f';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('#' + r.keyframe, px, by + h/2);
+      });
+      ctx.restore();
+    }
+  };
+
   chart = new Chart(ctx, {
     type: 'line',
     data: { datasets: [] },
@@ -532,7 +589,7 @@ function buildChart() {
         x: { type: 'linear', display: true, ticks: { callback: v => fmtTime(smoothedRows[Math.round(v)]?.time || 0), color: '#666', maxTicksLimit: 10 }, grid: { color: '#1a3a5c33' } },
       },
     },
-    plugins: [condBgPlugin, cursorPlugin],
+    plugins: [condBgPlugin, cursorPlugin, keyframePlugin],
   });
   rebuildChart();
 }
@@ -648,6 +705,206 @@ function afrToColor(afr) {
   return '#4caf50';
 }
 
+// ══════════ RPM ESTIMATION ══════════
+// TH400 3-speed auto: 1st=2.48, 2nd=1.48, 3rd=1.00, final=3.73
+// Tire: 235/70R15, circumference=2.23m=7.316ft
+const GEARS = [2.48, 1.48, 1.00];
+const FINAL_DRIVE = 3.73;
+const TIRE_CIRC_FT = 7.316;
+
+function estimateRPM(speedMph) {
+  if (speedMph < 2) return 700; // idle
+  const fpm = speedMph * 88; // feet per minute
+  // Auto-detect gear from speed
+  let gear;
+  if (speedMph < 18) gear = GEARS[0];      // 1st
+  else if (speedMph < 40) gear = GEARS[1];  // 2nd
+  else gear = GEARS[2];                      // 3rd
+  return (fpm * FINAL_DRIVE * gear) / TIRE_CIRC_FT;
+}
+
+// ══════════ AFR HEATMAP ══════════
+// Grid: RPM (X) 500-6500 in 500 steps = 13 cols, MAP/Load (Y) 0-22 inHg in 2 steps = 12 rows
+const HM_RPM_MIN = 500, HM_RPM_MAX = 6500, HM_RPM_STEP = 500;
+const HM_MAP_MIN = 0, HM_MAP_MAX = 22, HM_MAP_STEP = 2;
+const HM_COLS = Math.floor((HM_RPM_MAX - HM_RPM_MIN) / HM_RPM_STEP) + 1; // 13
+const HM_ROWS = Math.floor((HM_MAP_MAX - HM_MAP_MIN) / HM_MAP_STEP) + 1; // 12
+let hmData = []; // [row][col] = { sum, count }
+let hmTrail = []; // ghost trail: last N positions as {col, row, afr}
+const TRAIL_LEN = 30; // ~2.4s at 12.5Hz
+
+let hmPopulatedTo = -1; // track incremental population
+
+function resetHeatmapData() {
+  hmData = [];
+  for (let r = 0; r < HM_ROWS; r++) {
+    hmData[r] = [];
+    for (let c = 0; c < HM_COLS; c++) hmData[r][c] = { sum: 0, count: 0 };
+  }
+  hmTrail = [];
+  hmPopulatedTo = -1;
+}
+
+function hmColFromRPM(rpm) { return Math.max(0, Math.min(HM_COLS - 1, Math.round((rpm - HM_RPM_MIN) / HM_RPM_STEP))); }
+function hmRowFromMAP(mapV) { return Math.max(0, Math.min(HM_ROWS - 1, HM_ROWS - 1 - Math.round((mapV - HM_MAP_MIN) / HM_MAP_STEP))); }
+
+function addRowToHeatmap(r) {
+  const rpm = estimateRPM(r.vss || r.speed);
+  const col = hmColFromRPM(rpm);
+  const row = hmRowFromMAP(r.map);
+  const afr = (r.afr + r.afr1) / 2;
+  if (afr > 8 && afr < 20) {
+    hmData[row][col].sum += afr;
+    hmData[row][col].count++;
+  }
+}
+
+function populateHeatmapUpTo(idx) {
+  idx = Math.min(idx, rows.length - 1);
+  // If scrubbed backwards, rebuild from scratch
+  if (idx < hmPopulatedTo) {
+    resetHeatmapData();
+  }
+  // Incrementally add new rows
+  const start = hmPopulatedTo + 1;
+  for (let i = start; i <= idx; i++) addRowToHeatmap(rows[i]);
+  hmPopulatedTo = idx;
+
+  // Build trail from last TRAIL_LEN rows
+  hmTrail = [];
+  const trailStart = Math.max(0, idx - TRAIL_LEN);
+  for (let i = trailStart; i <= idx; i++) {
+    const r = rows[i];
+    const rpm = estimateRPM(r.vss || r.speed);
+    hmTrail.push({ col: hmColFromRPM(rpm), row: hmRowFromMAP(r.map), afr: (r.afr + r.afr1) / 2 });
+  }
+}
+
+function afrColorRGB(afr) {
+  const t = Math.max(0, Math.min(1, (afr - 11.0) / (15.0 - 11.0)));
+  let rv, g, b;
+  if (t < 0.35) { const s = t/0.35; rv=255; g=70+s*100; b=30+s*30; }
+  else if (t < 0.65) { const s=(t-0.35)/0.3; rv=255-s*120; g=170+s*60; b=60+s*40; }
+  else { const s=(t-0.65)/0.35; rv=135-s*70; g=230-s*40; b=100+s*60; }
+  return `rgb(${Math.round(rv)},${Math.round(g)},${Math.round(b)})`;
+}
+
+function drawHeatmap() {
+  const canvas = document.getElementById('afrHeatmap');
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const W = rect.width, H = 320;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const left = 50, top = 14, right = 12, bottom = 34;
+  const gw = W - left - right, gh = H - top - bottom;
+  const cw = gw / HM_COLS, ch = gh / HM_ROWS;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw cells
+  for (let r = 0; r < HM_ROWS; r++) {
+    for (let c = 0; c < HM_COLS; c++) {
+      const x = left + c * cw, y = top + r * ch;
+      const d = hmData[r][c];
+      if (d.count === 0) {
+        ctx.fillStyle = '#0a0f1e';
+        ctx.fillRect(x + 0.5, y + 0.5, cw - 1, ch - 1);
+      } else {
+        const avg = d.sum / d.count;
+        ctx.fillStyle = afrColorRGB(avg);
+        ctx.globalAlpha = Math.min(1, 0.3 + d.count * 0.05);
+        ctx.fillRect(x + 0.5, y + 0.5, cw - 1, ch - 1);
+        ctx.globalAlpha = 1;
+        // Value text if cell is wide enough
+        if (cw > 38) {
+          ctx.fillStyle = '#000';
+          ctx.font = `bold ${cw > 48 ? 11 : 9}px sans-serif`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(avg.toFixed(1), x + cw/2, y + ch/2);
+        }
+      }
+    }
+  }
+
+  // Ghost trail
+  for (let i = 0; i < hmTrail.length; i++) {
+    const t = hmTrail[i];
+    const age = hmTrail.length - 1 - i; // 0 = newest
+    const alpha = Math.max(0.05, 1 - age / TRAIL_LEN);
+    const x = left + t.col * cw + cw/2;
+    const y = top + t.row * ch + ch/2;
+    ctx.beginPath();
+    ctx.arc(x, y, 3 + (1 - age/TRAIL_LEN) * 2, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${alpha * 0.4})`;
+    ctx.fill();
+  }
+
+  // Trail line connecting dots
+  if (hmTrail.length > 1) {
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(79,195,247,0.35)';
+    ctx.lineWidth = 1.5;
+    hmTrail.forEach((t, i) => {
+      const x = left + t.col * cw + cw/2;
+      const y = top + t.row * ch + ch/2;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  // Current position dot (big bright)
+  if (hmTrail.length > 0) {
+    const cur = hmTrail[hmTrail.length - 1];
+    const cx = left + cur.col * cw + cw/2;
+    const cy = top + cur.row * ch + ch/2;
+    // Glow
+    ctx.beginPath(); ctx.arc(cx, cy, 10, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(79,195,247,0.2)'; ctx.fill();
+    // Dot
+    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI*2);
+    ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.strokeStyle = '#4fc3f7'; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  // Y-axis labels (MAP vacuum — bottom=0/WOT, top=22/idle)
+  ctx.fillStyle = '#888'; ctx.font = '10px sans-serif';
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let r = 0; r < HM_ROWS; r++) {
+    const mapVal = HM_MAP_MAX - r * HM_MAP_STEP;
+    if (r % 2 === 0) ctx.fillText(mapVal + '"', left - 4, top + r * ch + ch/2);
+  }
+
+  // X-axis labels (RPM)
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let c = 0; c < HM_COLS; c++) {
+    const rpm = HM_RPM_MIN + c * HM_RPM_STEP;
+    if (c % 2 === 0) ctx.fillText(rpm, left + c * cw + cw/2, top + gh + 4);
+  }
+
+  // Axis titles
+  ctx.fillStyle = '#4fc3f7'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Est. RPM (from VSS + gear)', left + gw/2, H - 2);
+  ctx.save(); ctx.translate(10, top + gh/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('MAP Vacuum (inHg)', 0, 0); ctx.restore();
+
+  // Legend bar
+  const bar = document.getElementById('hmLegendBar');
+  if (bar) bar.style.background = 'linear-gradient(to right, rgb(255,70,30), rgb(255,170,60), rgb(135,230,100), rgb(65,190,160))';
+
+  // Current readout
+  if (rows.length > 0 && playIdx < rows.length) {
+    const r = rows[playIdx];
+    const rpm = estimateRPM(r.vss || r.speed);
+    const afr = ((r.afr + r.afr1) / 2).toFixed(2);
+    document.getElementById('hmCurrent').textContent = `RPM ≈${Math.round(rpm)} | MAP ${r.map.toFixed(1)}" | AFR ${afr}`;
+  }
+}
+
 function valToColor(val, min, max, colLow, colHigh) {
   const t = Math.max(0, Math.min(1, (val - min) / (max - min)));
   return t < 0.5 ? colLow : colHigh;
@@ -728,6 +985,10 @@ function updatePlaybackUI() {
 
   // Chart cursor
   if (chart) chart.update('none');
+
+  // Heatmap
+  populateHeatmapUpTo(playIdx);
+  drawHeatmap();
 
   // Live values
   updateValsGrid(r, raw);
@@ -922,6 +1183,9 @@ function loadSyntheticData() {
   applySmoothing();
   initUI();
 }
+
+// Resize handler
+window.addEventListener('resize', () => { if (rows.length) drawHeatmap(); });
 
 // Keyboard shortcuts
 document.addEventListener('keydown', e => {
