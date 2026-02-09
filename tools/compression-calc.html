@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compression Ratio Calculator — 1969 Nova 454 BBC</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; display: flex; justify-content: center; padding: 24px; }
+  .container { max-width: 720px; width: 100%; }
+  h1 { font-size: 1.4rem; color: #4fc3f7; margin-bottom: 4px; }
+  .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 24px; }
+  .card { background: #16213e; border-radius: 10px; padding: 20px; margin-bottom: 16px; border: 1px solid #1a3a5c; }
+  .card h2 { font-size: 1rem; color: #4fc3f7; margin-bottom: 14px; border-bottom: 1px solid #1a3a5c; padding-bottom: 8px; }
+  .row { display: flex; align-items: center; margin-bottom: 10px; gap: 10px; }
+  .row label { flex: 1; font-size: 0.85rem; color: #b0b0b0; }
+  .row input { width: 90px; padding: 6px 8px; border: 1px solid #2a4a6c; border-radius: 5px; background: #0f1a30; color: #fff; font-size: 0.9rem; text-align: right; }
+  .row input:focus { outline: none; border-color: #4fc3f7; }
+  .row .unit { width: 36px; font-size: 0.8rem; color: #666; text-align: left; }
+  .row .calc { color: #4fc3f7; font-size: 0.85rem; font-weight: 500; width: 90px; text-align: right; }
+  .result-card { background: linear-gradient(135deg, #1a3a5c, #16213e); border: 1px solid #4fc3f7; }
+  .cr-display { text-align: center; padding: 16px 0; }
+  .cr-number { font-size: 3.2rem; font-weight: 700; color: #fff; }
+  .cr-label { font-size: 0.85rem; color: #888; margin-top: 2px; }
+  .volumes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .vol-item { background: #0f1a30; border-radius: 6px; padding: 8px 12px; }
+  .vol-item .val { font-size: 1.1rem; color: #fff; font-weight: 600; }
+  .vol-item .lbl { font-size: 0.75rem; color: #888; }
+  .note { font-size: 0.75rem; color: #555; margin-top: 6px; font-style: italic; }
+  .sensitivity { margin-top: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  th { color: #4fc3f7; text-align: right; padding: 4px 8px; border-bottom: 1px solid #1a3a5c; }
+  th:first-child { text-align: left; }
+  td { text-align: right; padding: 4px 8px; color: #ccc; }
+  td:first-child { text-align: left; color: #888; }
+  tr.highlight td { color: #4fc3f7; font-weight: 600; }
+  .reset-btn { background: none; border: 1px solid #333; color: #888; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; float: right; }
+  .reset-btn:hover { border-color: #4fc3f7; color: #4fc3f7; }
+  .divider { border: none; border-top: 2px solid #4fc3f7; margin: 32px 0 24px; opacity: 0.3; }
+  .dcr-result { background: linear-gradient(135deg, #3a2a1a, #16213e); border: 1px solid #ffa726; }
+  .dcr-result h2 { color: #ffa726; }
+  .dcr-number { font-size: 3.2rem; font-weight: 700; color: #fff; }
+  .dcr-label { font-size: 0.85rem; color: #888; margin-top: 2px; }
+  .dual-result { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; text-align: center; padding: 16px 0; }
+  .dual-result .sub { font-size: 0.75rem; color: #666; }
+  .row .calc-orange { color: #ffa726; font-size: 0.85rem; font-weight: 500; width: 90px; text-align: right; }
+  tr.highlight-orange td { color: #ffa726; font-weight: 600; }
+  .cam-tag { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 0.7rem; font-weight: 600; margin-left: 6px; }
+  .cam-roller { background: #ffa726; color: #1a1a2e; }
+  .cam-flat { background: #4fc3f7; color: #1a1a2e; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Compression Ratio Calculator</h1>
+  <p class="subtitle">1969 Chevrolet Nova — 454 BBC .030 Over</p>
+
+  <div class="card">
+    <h2>Engine Dimensions <button class="reset-btn" onclick="resetDefaults()">Reset to Nova specs</button></h2>
+    <div class="row"><label>Bore</label><input id="bore" type="number" step="0.001" value="4.280"><span class="unit">in</span></div>
+    <div class="row"><label>Stroke</label><input id="stroke" type="number" step="0.001" value="4.000"><span class="unit">in</span></div>
+    <div class="row"><label>Cylinders</label><input id="cylinders" type="number" step="1" value="8"><span class="unit"></span></div>
+    <div class="row"><label>Displacement</label><span class="calc" id="dispCi">—</span><span class="unit">ci</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Combustion Chamber</h2>
+    <div class="row"><label>Chamber Volume</label><input id="chamber" type="number" step="0.1" value="110"><span class="unit">cc</span></div>
+    <div class="row"><label>Piston Dome (+) / Dish (−)</label><input id="dome" type="number" step="0.1" value="26"><span class="unit">cc</span></div>
+    <div class="row"><label>Deck Clearance</label><input id="deck" type="number" step="0.001" value="0.020"><span class="unit">in</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Head Gasket</h2>
+    <div class="row"><label>Gasket Bore</label><input id="gasketBore" type="number" step="0.001" value="4.370"><span class="unit">in</span></div>
+    <div class="row"><label>Gasket Thickness (compressed)</label><input id="gasketThick" type="number" step="0.001" value="0.038"><span class="unit">in</span></div>
+  </div>
+
+  <div class="card result-card">
+    <div class="cr-display">
+      <div class="cr-number" id="crResult">—</div>
+      <div class="cr-label">Compression Ratio</div>
+    </div>
+    <div class="volumes">
+      <div class="vol-item"><div class="val" id="vSwept">—</div><div class="lbl">Swept (cc)</div></div>
+      <div class="vol-item"><div class="val" id="vClearance">—</div><div class="lbl">Clearance (cc)</div></div>
+      <div class="vol-item"><div class="val" id="vGasket">—</div><div class="lbl">Gasket (cc)</div></div>
+      <div class="vol-item"><div class="val" id="vDeck">—</div><div class="lbl">Deck (cc)</div></div>
+    </div>
+    <p class="note">CR = (Swept + Clearance) / Clearance &nbsp;|&nbsp; Clearance = Chamber + Gasket + Deck − Dome</p>
+  </div>
+
+  <div class="card sensitivity">
+    <h2>Sensitivity — Deck Clearance vs CR</h2>
+    <table id="sensTable">
+      <thead><tr><th>Deck</th><th>Deck (cc)</th><th>Clearance (cc)</th><th>CR</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <hr class="divider">
+
+  <h1>Dynamic Compression Ratio</h1>
+  <p class="subtitle">Accounts for intake valve closing point — the actual trapped charge before compression begins</p>
+
+  <div class="card">
+    <h2>Connecting Rod</h2>
+    <div class="row"><label>Rod Length (center-to-center)</label><input id="rodLen" type="number" step="0.001" value="6.385"><span class="unit">in</span></div>
+    <div class="row"><label>Rod Ratio (rod / crank radius)</label><span class="calc" id="rodRatio">—</span><span class="unit"></span></div>
+  </div>
+
+  <div class="card">
+    <h2>Camshaft — Intake Timing</h2>
+    <div class="row"><label>Intake Duration @ .050"</label><input id="intDur" type="number" step="1" value="236"><span class="unit">°</span></div>
+    <div class="row"><label>Intake Centerline</label><input id="intCL" type="number" step="1" value="109"><span class="unit">° ATDC</span></div>
+    <div class="row"><label>Intake Valve Closes (auto)</label><span class="calc-orange" id="ivcAbdc">—</span><span class="unit">° ABDC</span></div>
+    <div class="row"><label>Effective Stroke</label><span class="calc-orange" id="effStroke">—</span><span class="unit">in</span></div>
+  </div>
+
+  <div class="card dcr-result">
+    <h2>Results</h2>
+    <div class="dual-result">
+      <div>
+        <div class="cr-number" id="staticCr2">—</div>
+        <div class="dcr-label">Static CR</div>
+        <div class="sub">Full stroke</div>
+      </div>
+      <div>
+        <div class="dcr-number" id="dynCr">—</div>
+        <div class="dcr-label">Dynamic CR</div>
+        <div class="sub">Trapped volume at IVC</div>
+      </div>
+    </div>
+    <div class="volumes">
+      <div class="vol-item"><div class="val" id="vEffSwept">—</div><div class="lbl">Effective Swept (cc)</div></div>
+      <div class="vol-item"><div class="val" id="vTrapped">—</div><div class="lbl">Trapped Volume (cc)</div></div>
+      <div class="vol-item"><div class="val" id="vLost">—</div><div class="lbl">Lost Stroke (cc)</div></div>
+      <div class="vol-item"><div class="val" id="vEffPct">—</div><div class="lbl">Effective Stroke %</div></div>
+    </div>
+    <p class="note">DCR = (Effective Swept + Clearance) / Clearance &nbsp;|&nbsp; Piston position at IVC uses rod geometry for accuracy</p>
+  </div>
+
+  <div class="card sensitivity">
+    <h2>Cam Comparison — Dynamic CR<span class="cam-tag cam-roller">Rollin' Thunder #2261</span><span class="cam-tag cam-flat">Performer RPM #7162</span></h2>
+    <table id="camTable">
+      <thead><tr><th></th><th>Rollin' Thunder</th><th>Performer RPM</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const CI_TO_CC = 16.387064;
+const DEG2RAD = Math.PI / 180;
+const $ = id => document.getElementById(id);
+const val = id => parseFloat($(id).value) || 0;
+
+const defaults = {
+  bore: 4.280, stroke: 4.000, cylinders: 8, chamber: 110, dome: 26,
+  deck: 0.020, gasketBore: 4.370, gasketThick: 0.038,
+  rodLen: 6.385, intDur: 236, intCL: 109
+};
+
+function resetDefaults() {
+  Object.entries(defaults).forEach(([k, v]) => $(k).value = v);
+  calc();
+}
+
+// Piston displacement from TDC at crank angle theta (degrees from TDC)
+// Uses full rod geometry: x = r*(1-cosθ) + l*(1-sqrt(1-(r/l)²sin²θ))
+function pistonFromTDC(theta_deg, stroke, rodLen) {
+  const r = stroke / 2;
+  const theta = theta_deg * DEG2RAD;
+  const ratio = r / rodLen;
+  return r * (1 - Math.cos(theta)) + rodLen * (1 - Math.sqrt(1 - ratio * ratio * Math.sin(theta) * Math.sin(theta)));
+}
+
+// IVC in degrees ABDC from cam specs
+function calcIVC(intDuration050, intCenterline) {
+  return intCenterline + (intDuration050 / 2) - 180;
+}
+
+// Dynamic CR from IVC
+function calcDCR(bore, stroke, rodLen, ivc_abdc, clearance_cc) {
+  const theta_ivc = 180 + ivc_abdc; // degrees from TDC
+  const eff_stroke = pistonFromTDC(theta_ivc, stroke, rodLen);
+  const eff_swept_cc = (Math.PI / 4) * bore * bore * eff_stroke * CI_TO_CC;
+  return { eff_stroke, eff_swept_cc, dcr: clearance_cc > 0 ? (eff_swept_cc + clearance_cc) / clearance_cc : 0 };
+}
+
+function calc() {
+  const bore = val('bore'), stroke = val('stroke'), cyl = val('cylinders');
+  const chamber = val('chamber'), dome = val('dome'), deck = val('deck');
+  const gBore = val('gasketBore'), gThick = val('gasketThick');
+  const rodLen = val('rodLen'), intDur = val('intDur'), intCL = val('intCL');
+
+  // --- Static CR ---
+  const swept_ci = (Math.PI / 4) * bore * bore * stroke;
+  const swept_cc = swept_ci * CI_TO_CC;
+  const gasket_cc = (Math.PI / 4) * gBore * gBore * gThick * CI_TO_CC;
+  const deck_cc = (Math.PI / 4) * bore * bore * deck * CI_TO_CC;
+  const clearance = chamber + gasket_cc + deck_cc - dome;
+  const cr = clearance > 0 ? (swept_cc + clearance) / clearance : 0;
+
+  $('dispCi').textContent = (swept_ci * cyl).toFixed(1);
+  $('crResult').textContent = cr > 0 ? cr.toFixed(2) + ':1' : '—';
+  $('vSwept').textContent = swept_cc.toFixed(1);
+  $('vClearance').textContent = clearance.toFixed(1);
+  $('vGasket').textContent = gasket_cc.toFixed(1);
+  $('vDeck').textContent = deck_cc.toFixed(1);
+
+  // Sensitivity table
+  const tbody = $('sensTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  [0, 0.005, 0.010, 0.015, 0.020, 0.025, 0.030].forEach(d => {
+    const d_cc = (Math.PI / 4) * bore * bore * d * CI_TO_CC;
+    const cl = chamber + gasket_cc + d_cc - dome;
+    const ratio = cl > 0 ? (swept_cc + cl) / cl : 0;
+    const tr = document.createElement('tr');
+    if (Math.abs(d - deck) < 0.0001) tr.className = 'highlight';
+    tr.innerHTML = `<td>${d.toFixed(3)}"</td><td>${d_cc.toFixed(2)}</td><td>${cl.toFixed(2)}</td><td>${ratio > 0 ? ratio.toFixed(2) + ':1' : '—'}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  // --- Dynamic CR ---
+  const crankR = stroke / 2;
+  const rodRatio = rodLen / crankR;
+  $('rodRatio').textContent = rodRatio.toFixed(3);
+
+  const ivc = calcIVC(intDur, intCL);
+  $('ivcAbdc').textContent = ivc.toFixed(1);
+
+  const dyn = calcDCR(bore, stroke, rodLen, ivc, clearance);
+  $('effStroke').textContent = dyn.eff_stroke.toFixed(3);
+  $('staticCr2').textContent = cr > 0 ? cr.toFixed(2) + ':1' : '—';
+  $('dynCr').textContent = dyn.dcr > 0 ? dyn.dcr.toFixed(2) + ':1' : '—';
+  $('vEffSwept').textContent = dyn.eff_swept_cc.toFixed(1);
+  $('vTrapped').textContent = (dyn.eff_swept_cc + clearance).toFixed(1);
+  $('vLost').textContent = (swept_cc - dyn.eff_swept_cc).toFixed(1);
+  $('vEffPct').textContent = swept_cc > 0 ? ((dyn.eff_stroke / stroke) * 100).toFixed(1) + '%' : '—';
+
+  // --- Cam comparison table ---
+  const cams = [
+    { name: 'Rollin\' Thunder #2261', dur: 236, cl: 109, type: 'Hydraulic Roller' },
+    { name: 'Performer RPM #7162', dur: 240, cl: 110, type: 'Hydraulic Flat Tappet' }
+  ];
+
+  const camTbody = $('camTable').querySelector('tbody');
+  camTbody.innerHTML = '';
+  const rows = [
+    { label: 'Type', fn: c => c.type },
+    { label: 'Intake Duration @ .050"', fn: c => c.dur + '°' },
+    { label: 'Intake Centerline', fn: c => c.cl + '° ATDC' },
+    { label: 'IVC @ .050"', fn: c => calcIVC(c.dur, c.cl).toFixed(1) + '° ABDC' },
+    { label: 'Effective Stroke', fn: c => calcDCR(bore, stroke, rodLen, calcIVC(c.dur, c.cl), clearance).eff_stroke.toFixed(3) + '"' },
+    { label: 'Effective Stroke %', fn: c => ((calcDCR(bore, stroke, rodLen, calcIVC(c.dur, c.cl), clearance).eff_stroke / stroke) * 100).toFixed(1) + '%' },
+    { label: 'Static CR', fn: c => cr.toFixed(2) + ':1' },
+    { label: 'Dynamic CR', fn: c => {
+      const d = calcDCR(bore, stroke, rodLen, calcIVC(c.dur, c.cl), clearance);
+      return d.dcr > 0 ? d.dcr.toFixed(2) + ':1' : '—';
+    }},
+    { label: 'Effective Octane Need', fn: c => {
+      const d = calcDCR(bore, stroke, rodLen, calcIVC(c.dur, c.cl), clearance);
+      return d.dcr >= 8.0 ? (d.dcr > 9.0 ? '91+ premium' : '87 regular') : '—';
+    }}
+  ];
+
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    const bold = r.label === 'Dynamic CR';
+    tr.innerHTML = `<td>${r.label}</td><td style="${bold ? 'color:#ffa726;font-weight:600' : ''}">${r.fn(cams[0])}</td><td style="${bold ? 'color:#4fc3f7;font-weight:600' : ''}">${r.fn(cams[1])}</td>`;
+    camTbody.appendChild(tr);
+  });
+}
+
+document.querySelectorAll('input').forEach(el => el.addEventListener('input', calc));
+calc();
+</script>
+</body>
+</html>

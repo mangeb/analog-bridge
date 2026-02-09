@@ -7,7 +7,7 @@
 - **Compression Ratio:** 10.6:1 (measured: 110cc chamber, 26cc dome, .020" deck, .038" gasket)
 - **Pistons:** SRP 212142, forged 4032 alloy, 26cc dome, 4.280" bore
 - **Rings:** Sportsman JEP-S100S8-42805
-- **Connecting Rods:** Eagle ESP-63853D
+- **Connecting Rods:** Eagle ESP-63853D, 4340 forged H-beam, 6.385" center-to-center, 2.200" journal, 0.990" pin, ARP 8740 bolts, ~785g
 - **Main Bearings:** Clevite MS829H10
 - **Rod Bearings:** Clevite CB743HN10
 - **Main Studs:** ARP 135-5402
