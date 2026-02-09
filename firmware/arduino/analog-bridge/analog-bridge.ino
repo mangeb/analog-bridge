@@ -83,6 +83,7 @@ struct SensorData {
   // GPS
   long lat, lon;
   float speed, alt, dir;
+  uint8_t satellites;
   bool gpsStale;
   // IMU — accelerometer, gyroscope, magnetometer, temperature
   float accx, accy, accz;
@@ -230,7 +231,7 @@ static void stopRecording() {
 // GPS processing
 //----------------------------------------------------------------
 char filenameBuf[16] = "CLOG";
-char datebuf[20];
+char datebuf[24];
 bool firstGPSFix = false;
 
 static void processGPSFix(const gps_fix &fix) {
@@ -246,6 +247,8 @@ static void processGPSFix(const gps_fix &fix) {
     data.speed = fix.speed_mph();
     data.alt   = fix.altitude_ft();
     data.dir   = fix.heading();
+    if (fix.valid.satellites)
+      data.satellites = fix.satellites;
 
     int timezone = -7; // SF (UTC -0800) > NMEA is UTC oriented
     int localHour = (fix.dateTime.hours + timezone + 24) % 24;
@@ -272,7 +275,12 @@ static void processGPSFix(const gps_fix &fix) {
     DEBUG_PORT.println();
 #endif
   } else {
-    DEBUG_PORT.println(F("?"));
+    // No valid location — rate-limit to once per 5 seconds
+    static unsigned long lastNoFix = 0;
+    if (millis() - lastNoFix > 5000) {
+      DEBUG_PORT.println(F("GPS: waiting for fix..."));
+      lastNoFix = millis();
+    }
   }
 }
 
@@ -522,8 +530,8 @@ static void openLogFile() {
   logFile = SD.open(fname, FILE_WRITE);
   if (logFile) {
     logFile.println(datebuf);
-    logFile.println(F("time,lat,lon,speed,alt,dir,accx,accy,accz,rotx,roty,rotz,magx,magy,magz,imuTemp,afr,afr1,rpm,map,oilp,coolant,gpsStale"));
-    logFile.println(F("(s),(deg),(deg),(mph),(ft),(deg),(g),(g),(g),(dps),(dps),(dps),(uT),(uT),(uT),(C),(afr),(afr),(rpm),(inHgVac),(psig),(F),(flag)"));
+    logFile.println(F("time,lat,lon,speed,alt,dir,sats,accx,accy,accz,rotx,roty,rotz,magx,magy,magz,imuTemp,afr,afr1,rpm,map,oilp,coolant,gpsStale"));
+    logFile.println(F("(s),(deg),(deg),(mph),(ft),(deg),(#),(g),(g),(g),(dps),(dps),(dps),(uT),(uT),(uT),(C),(afr),(afr),(rpm),(inHgVac),(psig),(F),(flag)"));
     logFile.flush();
     lastFlush = millis();
   }
@@ -537,6 +545,7 @@ static void printRow(Print &out, float now) {
   out.print(data.speed);      out.print(',');
   out.print(data.alt);        out.print(',');
   out.print(data.dir);        out.print(',');
+  out.print(data.satellites);  out.print(',');
   out.print(data.accx);       out.print(',');
   out.print(data.accy);       out.print(',');
   out.print(data.accz);       out.print(',');
@@ -602,15 +611,81 @@ static void writeToLog() {
 //----------------------------------------------------------------
 // Serial command handler
 //----------------------------------------------------------------
+static void printStatus() {
+  unsigned long uptime = millis() / 1000;
+  DEBUG_PORT.println(F("--- Analog Bridge Status ---"));
+  DEBUG_PORT.print(F("Uptime: ")); DEBUG_PORT.print(uptime); DEBUG_PORT.println(F("s"));
+  DEBUG_PORT.print(F("Recording: ")); DEBUG_PORT.println(isRecording ? F("YES") : F("NO"));
+  DEBUG_PORT.print(F("GPS fix: ")); DEBUG_PORT.println(data.gpsStale ? F("STALE") : F("OK"));
+  DEBUG_PORT.print(F("GPS sats: ")); DEBUG_PORT.println(data.satellites);
+  DEBUG_PORT.print(F("IMU: ")); DEBUG_PORT.println(mpu9250Ready ? F("OK") : F("FAIL"));
+  DEBUG_PORT.print(F("ISP2 LC1: ")); DEBUG_PORT.print(isp2Lc1Count);
+  DEBUG_PORT.print(F("  Aux: ")); DEBUG_PORT.println(isp2AuxCount);
+  DEBUG_PORT.print(F("Live debug: ")); DEBUG_PORT.println(liveDebug ? F("ON") : F("OFF"));
+  DEBUG_PORT.print(F("Free SRAM: ")); DEBUG_PORT.println(freeMemory());
+}
+
+// Returns approximate free SRAM (bytes between heap and stack)
+static int freeMemory() {
+  extern int __heap_start, *__brkval;
+  int v;
+  return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
+}
+
 void handleSerial() {
   while (DEBUG_PORT.available() > 0) {
     char c = DEBUG_PORT.read();
     switch (c) {
+      case '?':  // Print help
+        DEBUG_PORT.println(F("--- Analog Bridge Commands ---"));
+        DEBUG_PORT.println(F("  r  Start recording"));
+        DEBUG_PORT.println(F("  s  Stop recording"));
+        DEBUG_PORT.println(F("  d  Toggle live debug output"));
+        DEBUG_PORT.println(F("  p  Print current sensor snapshot"));
+        DEBUG_PORT.println(F("  v  Print system status"));
+        DEBUG_PORT.println(F("  i  Print ISP2 diagnostics"));
+        DEBUG_PORT.println(F("  g  Set GPS rate to 5Hz"));
+        DEBUG_PORT.println(F("  b  Set GPS baud to 115200"));
+        DEBUG_PORT.println(F("  ?  This help"));
+        break;
       case 'r':  // Start recording to SD card
         startRecording();
         break;
       case 's':  // Stop recording
         stopRecording();
+        break;
+      case 'p':  // Print current sensor snapshot
+        DEBUG_PORT.println(F("--- Sensor Snapshot ---"));
+        DEBUG_PORT.print(F("GPS: "));
+        printL(DEBUG_PORT, data.lat); DEBUG_PORT.print(F(", "));
+        printL(DEBUG_PORT, data.lon);
+        DEBUG_PORT.print(F("  ")); DEBUG_PORT.print(data.speed); DEBUG_PORT.print(F(" mph"));
+        DEBUG_PORT.print(F("  sats=")); DEBUG_PORT.print(data.satellites);
+        DEBUG_PORT.print(data.gpsStale ? F(" [STALE]") : F(""));
+        DEBUG_PORT.println();
+        DEBUG_PORT.print(F("IMU: acc="));
+        DEBUG_PORT.print(data.accx); DEBUG_PORT.print(',');
+        DEBUG_PORT.print(data.accy); DEBUG_PORT.print(',');
+        DEBUG_PORT.print(data.accz);
+        DEBUG_PORT.print(F("  gyro="));
+        DEBUG_PORT.print(data.rotx); DEBUG_PORT.print(',');
+        DEBUG_PORT.print(data.roty); DEBUG_PORT.print(',');
+        DEBUG_PORT.print(data.rotz);
+        DEBUG_PORT.print(F("  temp=")); DEBUG_PORT.print(data.imuTemp, 1); DEBUG_PORT.println(F("C"));
+        DEBUG_PORT.print(F("MAG: "));
+        DEBUG_PORT.print(data.magx); DEBUG_PORT.print(',');
+        DEBUG_PORT.print(data.magy); DEBUG_PORT.print(',');
+        DEBUG_PORT.print(data.magz); DEBUG_PORT.println(F(" uT"));
+        DEBUG_PORT.print(F("ENG: AFR="));
+        DEBUG_PORT.print(data.afr, 1); DEBUG_PORT.print('/');
+        DEBUG_PORT.print(data.afr1, 1);
+        DEBUG_PORT.print(F("  RPM=")); DEBUG_PORT.print(data.rpm, 0);
+        DEBUG_PORT.print(F("  MAP=")); DEBUG_PORT.print(data.map, 1);
+        DEBUG_PORT.print(F("  OIL=")); DEBUG_PORT.print(data.oilp, 0);
+        DEBUG_PORT.print(F("  CLT=")); DEBUG_PORT.println(data.coolant, 0);
+        break;
+      case 'v':  // Print system status
+        printStatus();
         break;
       case 'g':  // Set GPS update rate to 5Hz (200ms)
         sendUBX(UBX_CFG_RATE_5HZ, sizeof(UBX_CFG_RATE_5HZ));
@@ -737,7 +812,7 @@ void loop() {
   processLed();
   processButtons();
 
-  if (millis() >= nextSample) {
+  if ((long)(millis() - nextSample) >= 0) {
     nextSample += 80;  // Fixed 80ms interval, no drift
     readISP2();
     readmpu9250();
