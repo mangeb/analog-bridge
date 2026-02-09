@@ -17,6 +17,18 @@
 - Pink (light/medium) spring currently installed (factory stock for 80531)
 - Factory secondary power valve: 3.5 inHg (in secondary metering block)
 
+### Ignition Timing
+- **Current curve:** 16° initial + 18° mechanical = 34° total, all-in by 2900 RPM
+- **Vacuum advance:** Airtex 4V1053 (B28 canister), manifold vacuum, adds 16° at crank → 50° total cruise
+- **Distributor:** MSD #8361 Pro-Billet Street, magnetic pickup, adjustable mechanical advance
+- **Advance limiter:** Blue 21° bushing installed (MSD supplies multiple bushings: 18°, 21°, 25°, 28°)
+- **MSD 6AL #6420:** Controls dwell, multi-spark below ~3000 RPM, rev limiter capable
+- **Spark plugs:** NGK BKR5E-11 (heat range 5 — mid-range, appropriate for street/strip 10.6:1)
+- 34° total is aggressive for 10.6:1 but aluminum heads reject heat faster than iron — detonation margin is reasonable on 91 octane
+- 502 HO runs 32° total at 4000 RPM for comparison — Magnus is +2° and all-in 1100 RPM sooner, which suits the bigger cam's appetite for timing at low RPM
+- All-in by 2900 RPM is early; watch for detonation under load at 2500-3500 RPM (heavy throttle, low RPM, high gear). If knock occurs, either retard initial 2° or stiffen advance springs to push all-in to ~3500 RPM
+- 50° total cruise is high but typical for BBC with vacuum advance on manifold vacuum. If pinging on decel or light throttle, switch vacuum source to ported vacuum (eliminates advance at idle/decel)
+
 ## Action Plan
 
 1. **Fuel pressure test** — Verify 6–7 PSI steady under WOT load
