@@ -39,10 +39,11 @@
 #include <Wire.h>
 #include <FaBo9Axis_MPU9250.h>
 
-// ISP2 Serial - Innovate Motorsports
 //----------------------------------------------------------------
-// Mega: Use hardware Serial2 (RX=17, TX=16) for better buffering
-// Uno:  Use AltSoftSerial (RX=8, TX=9, claims PWM on pin 10)
+// ISP2 Serial port
+// Mega: hardware Serial2 (RX=17, TX=16)
+// Uno:  AltSoftSerial (RX=8, TX=9, claims PWM on pin 10)
+//----------------------------------------------------------------
 #if defined(__AVR_ATmega2560__) || defined(__AVR_ATmega1280__)
   #define isp2Serial Serial2
 #else
@@ -50,10 +51,11 @@
   AltSoftSerial isp2Serial;
 #endif
 
-/* SD card attached to SPI bus as follows:
- * Mega: MOSI-51, MISO-50, CLK-52, CS-53
- * Uno:  MOSI-11, MISO-12, CLK-13, CS-10
- */
+//----------------------------------------------------------------
+// SD card SPI chip select
+// Mega: MOSI-51, MISO-50, CLK-52, CS-53
+// Uno:  MOSI-11, MISO-12, CLK-13, CS-10
+//----------------------------------------------------------------
 
 #if defined(__AVR_ATmega2560__) || defined(__AVR_ATmega1280__)
   const int SD_CS_PIN = 53;
@@ -61,16 +63,20 @@
   const int SD_CS_PIN = 10;
 #endif
 
-// 9 Axis
+//----------------------------------------------------------------
+// IMU (MPU9250 9-axis + magnetometer)
 //----------------------------------------------------------------
 FaBo9Axis mpu9250;
 
-// GPS
+//----------------------------------------------------------------
+// GPS (u-blox via NeoGPS)
 //----------------------------------------------------------------
 static NMEAGPS gps;
 
-// Debug flags
-//#define TIMING_DEBUG 1  // 140 bytes SRAM, 750 bytes FLASH
+//----------------------------------------------------------------
+// Debug flags (uncomment to enable at compile time)
+//----------------------------------------------------------------
+//#define TIMING_DEBUG 1  // +140 bytes SRAM, +750 bytes FLASH
 //#define GPS_DEBUG 1
 //#define ISP2_DEBUG 1
 //#define SERIAL_DEBUG 1  // Print every data row to Serial (high bandwidth)
@@ -98,19 +104,20 @@ struct SensorData {
 };
 static SensorData data = {};
 
-// Logging File variables
-File logFile;
+// Logging
+static File logFile;
 static uint8_t sdErrorCount = 0;        // consecutive flush errors
 #define SD_MAX_ERRORS  3                 // auto-stop after this many
 
 // Timestamps
-unsigned long lastGPS = 0;
-bool isRecording = false;
-unsigned long startRecord = 0;
+static unsigned long lastGPS = 0;
+static bool isRecording = false;
+static unsigned long startRecord = 0;
 
-bool mpu9250Ready = false;
+static bool mpu9250Ready = false;
 
-// ISP2 Protocol
+//----------------------------------------------------------------
+// ISP2 Protocol (Innovate Motorsports serial)
 //----------------------------------------------------------------
 #define ISP2_H_SYNC_MASK  0xA2  // High sync byte: bits 7,5,1 set
 #define ISP2_L_SYNC_MASK  0x80  // Low sync byte: bit 7 set
@@ -152,7 +159,20 @@ static unsigned long isp2LastByte = 0;     // timestamp of last byte received
 #define VSS_HZ_PER_MPH     12.71    // Hz per MPH for this drivetrain
 #define AUX_VSS_MPH(v)     (((v) / 5.0 * SSI4_VSS_FREQ_MAX) / VSS_HZ_PER_MPH)
 
-// UI
+//----------------------------------------------------------------
+// Configuration constants
+//----------------------------------------------------------------
+#define UTC_OFFSET       -7     // PDT (UTC-7). Change to -8 for PST.
+#define GPS_STALE_MS     2000   // mark GPS stale after this many ms without fix
+#define FLUSH_INTERVAL   1000   // SD card flush interval (ms)
+#define BLINK_INTERVAL   1000   // recording LED blink rate (ms)
+#define DEBOUNCE_MS      500    // button debounce time (ms)
+#define NOFIX_MSG_MS     5000   // GPS no-fix message rate limit (ms)
+#define SAMPLE_INTERVAL  80     // main loop sample period (ms) = 12.5 Hz
+
+//----------------------------------------------------------------
+// UI — button and LED pins
+//----------------------------------------------------------------
 const int buttonPin = 2;
 const int buttonLedPin = 3;
 
@@ -196,8 +216,8 @@ static void sendUBX(const byte *cmd, size_t len) {
 }
 
 //----------------------------------------------------------------
-//  Print the 32-bit integer degrees *as if* they were high-precision floats
-static void printL(Print &outs, int32_t degE7) {
+//  Print a NeoGPS degE7 (int32 scaled by 1e7) as a decimal degree string
+static void printDegE7(Print &outs, int32_t degE7) {
   if (degE7 < 0) {
     degE7 = -degE7;
     outs.print('-');
@@ -228,28 +248,28 @@ static void startRecording() {
   sdErrorCount = 0;
   openLogFile();
   if (!logFile) {
-    DEBUG_PORT.println(F("ERR: Could not open log file, aborting recording"));
+    DEBUG_PORT.println(F("ERR: SD open failed, recording aborted"));
     isRecording = false;
     return;
   }
-  DEBUG_PORT.println(F("Started Recording"));
+  DEBUG_PORT.println(F("INF: Recording started"));
 }
 
 static void stopRecording() {
   isRecording = false;
   if (logFile) {
     logFile.close();
-    DEBUG_PORT.println(F("Log file closed"));
+    DEBUG_PORT.println(F("INF: Log file closed"));
   }
-  DEBUG_PORT.println(F("Stopped Recording"));
+  DEBUG_PORT.println(F("INF: Recording stopped"));
 }
 
 //----------------------------------------------------------------
 // GPS processing
 //----------------------------------------------------------------
-char filenameBuf[16] = "CLOG";
-char datebuf[24];
-bool firstGPSFix = false;
+static char filenameBuf[16] = "CLOG";
+static char datebuf[24];
+static bool firstGPSFix = false;
 
 static void processGPSFix(const gps_fix &fix) {
   if (fix.valid.location) {
@@ -267,8 +287,7 @@ static void processGPSFix(const gps_fix &fix) {
     if (fix.valid.satellites)
       data.satellites = fix.satellites;
 
-    int timezone = -7; // SF (UTC -0800) > NMEA is UTC oriented
-    int localHour = (fix.dateTime.hours + timezone + 24) % 24;
+    int localHour = (fix.dateTime.hours + UTC_OFFSET + 24) % 24;
 
     sprintf(datebuf, "%02d/%02d/%02d %02d:%02d:%02d ",
             fix.dateTime.date, fix.dateTime.month, fix.dateTime.year,
@@ -283,9 +302,9 @@ static void processGPSFix(const gps_fix &fix) {
     DEBUG_PORT.print(F("GPS Time: "));
     DEBUG_PORT.print(datebuf);
     DEBUG_PORT.print(',');
-    printL(DEBUG_PORT, fix.latitudeL());
+    printDegE7(DEBUG_PORT, fix.latitudeL());
     DEBUG_PORT.print(',');
-    printL(DEBUG_PORT, fix.longitudeL());
+    printDegE7(DEBUG_PORT, fix.longitudeL());
     DEBUG_PORT.print(',');
     if (fix.valid.satellites)
       DEBUG_PORT.print(fix.satellites);
@@ -297,8 +316,8 @@ static void processGPSFix(const gps_fix &fix) {
   } else {
     // No valid location — rate-limit to once per 5 seconds
     static unsigned long lastNoFix = 0;
-    if (millis() - lastNoFix > 5000) {
-      DEBUG_PORT.println(F("GPS: waiting for fix..."));
+    if (millis() - lastNoFix > NOFIX_MSG_MS) {
+      DEBUG_PORT.println(F("WRN: GPS waiting for fix..."));
       lastNoFix = millis();
     }
   }
@@ -323,7 +342,7 @@ static void readGPS() {
 //----------------------------------------------------------------
 // IMU — MPU9250 burst read (accel + temp + gyro) + magnetometer
 //----------------------------------------------------------------
-static void readmpu9250() {
+static void readMPU9250() {
 #ifdef TIMING_DEBUG
   long tm0 = millis();
 #endif
@@ -539,7 +558,7 @@ static unsigned long lastFlush = 0;
 
 static void openLogFile() {
   if (!SD.begin(SD_CS_PIN)) {
-    DEBUG_PORT.println(F("SDCARD ERR: Card failed, or not present"));
+    DEBUG_PORT.println(F("ERR: SD card failed or not present"));
     return;
   }
 
@@ -553,7 +572,7 @@ static void openLogFile() {
     snprintf(fname, sizeof(fname), "%s_%d.csv", filenameBuf, index);
   }
 
-  DEBUG_PORT.print(F("SDCARD INF: Trying to open "));
+  DEBUG_PORT.print(F("INF: Opening log "));
   DEBUG_PORT.println(fname);
   logFile = SD.open(fname, FILE_WRITE);
   if (logFile) {
@@ -568,8 +587,8 @@ static void openLogFile() {
 // Write a single data row to a Print target (Serial or File)
 static void printRow(Print &out, float now) {
   out.print(now, 3);          out.print(',');
-  printL(out, data.lat);      out.print(',');
-  printL(out, data.lon);      out.print(',');
+  printDegE7(out, data.lat);      out.print(',');
+  printDegE7(out, data.lon);      out.print(',');
   out.print(data.speed);      out.print(',');
   out.print(data.alt);        out.print(',');
   out.print(data.dir);        out.print(',');
@@ -654,8 +673,8 @@ static void writeToLog() {
 #endif
   float now = (float)(millis() - startRecord) / 1000.0;
 
-  // GPS staleness check: 2 seconds without a valid fix
-  if (lastGPS == 0 || (millis() - lastGPS > 2000)) {
+  // GPS staleness check
+  if (lastGPS == 0 || (millis() - lastGPS > GPS_STALE_MS)) {
     data.gpsStale = true;
     data.speed = 0.0;  // can't confirm movement without fresh GPS
     // Keep lat/lon as last-known position for analysis
@@ -677,7 +696,7 @@ static void writeToLog() {
     }
     printRow(logFile, now);
     // Flush every 1 second instead of every row
-    if (millis() - lastFlush > 1000) {
+    if (millis() - lastFlush > FLUSH_INTERVAL) {
       logFile.flush();
       // SD library sets write error flag on failure
       if (logFile.getWriteError()) {
@@ -729,7 +748,7 @@ static int freeMemory() {
   return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
 }
 
-void handleSerial() {
+static void handleSerial() {
   while (DEBUG_PORT.available() > 0) {
     char c = DEBUG_PORT.read();
     switch (c) {
@@ -754,8 +773,8 @@ void handleSerial() {
       case 'p':  // Print current sensor snapshot
         DEBUG_PORT.println(F("--- Sensor Snapshot ---"));
         DEBUG_PORT.print(F("GPS: "));
-        printL(DEBUG_PORT, data.lat); DEBUG_PORT.print(F(", "));
-        printL(DEBUG_PORT, data.lon);
+        printDegE7(DEBUG_PORT, data.lat); DEBUG_PORT.print(F(", "));
+        printDegE7(DEBUG_PORT, data.lon);
         DEBUG_PORT.print(F("  ")); DEBUG_PORT.print(data.speed); DEBUG_PORT.print(F(" mph"));
         DEBUG_PORT.print(F("  sats=")); DEBUG_PORT.print(data.satellites);
         DEBUG_PORT.print(data.gpsStale ? F(" [STALE]") : F(""));
@@ -786,7 +805,7 @@ void handleSerial() {
         break;
       case 'g':  // Set GPS update rate to 5Hz (200ms)
         sendUBX(UBX_CFG_RATE_5HZ, sizeof(UBX_CFG_RATE_5HZ));
-        DEBUG_PORT.println(F("GPS: Rate set to 5Hz (200ms)"));
+        DEBUG_PORT.println(F("INF: GPS rate set to 5Hz"));
         break;
       case 'b':  // Set GPS baud to 115200
         delay(10);
@@ -795,11 +814,11 @@ void handleSerial() {
         sendUBX(UBX_CFG_PRT_115200, sizeof(UBX_CFG_PRT_115200));
         delay(10);
         gpsPort.begin(115200);
-        DEBUG_PORT.println(F("GPS: Baud set to 115200"));
+        DEBUG_PORT.println(F("INF: GPS baud set to 115200"));
         break;
       case 'd':  // Toggle live debug output
         liveDebug = !liveDebug;
-        DEBUG_PORT.print(F("Live debug: "));
+        DEBUG_PORT.print(F("INF: Live debug "));
         DEBUG_PORT.println(liveDebug ? F("ON") : F("OFF"));
         break;
       case 'i':  // Print ISP2 diagnostics
@@ -822,22 +841,25 @@ void handleSerial() {
 
 //----------------------------------------------------------------
 // LED indicator
+// Button LED (pin 3): solid ON after GPS fix, blinks while recording
+// On-board LED (pin 13): solid ON = system running
 //----------------------------------------------------------------
-unsigned long lastBlink = 0;
-bool ledState = LOW;
-bool ledInitialized = false;
+static unsigned long lastBlink = 0;
+static bool ledState = LOW;
+static bool ledInitialized = false;
 
-void processLed() {
+static void processLed() {
   if (isRecording) {
     ledInitialized = false;  // reset so we re-init on stop
-    if (millis() - lastBlink > 1000) {
+    if (millis() - lastBlink > BLINK_INTERVAL) {
       ledState = !ledState;
       digitalWrite(buttonLedPin, ledState);
       lastBlink = millis();
     }
   } else {
     if (!ledInitialized) {
-      digitalWrite(LED_BUILTIN, HIGH);
+      digitalWrite(LED_BUILTIN, HIGH);  // on-board LED: system alive
+      // buttonLedPin is managed by processGPSFix() — solid ON after first fix
       ledState = HIGH;
       ledInitialized = true;
     }
@@ -847,24 +869,24 @@ void processLed() {
 //----------------------------------------------------------------
 // Button handling
 //----------------------------------------------------------------
-bool buttonReset = false;
-unsigned long lastButton = 0;
+static bool buttonReset = false;
+static unsigned long lastButton = 0;
 
-void processButtons() {
+static void processButtons() {
   bool buttonState = digitalRead(buttonPin);
 
   if (buttonState == HIGH && !isRecording && !buttonReset) {
-    DEBUG_PORT.println(F("START RECORDING PRESS"));
+    DEBUG_PORT.println(F("INF: Button press — start"));
     startRecording();
     buttonReset = true;
     lastButton = millis();
   } else if (buttonState == HIGH && isRecording && !buttonReset) {
-    DEBUG_PORT.println(F("STOP RECORDING PRESS"));
+    DEBUG_PORT.println(F("INF: Button press — stop"));
     stopRecording();
     buttonReset = true;
     lastButton = millis();
     digitalWrite(buttonLedPin, HIGH);
-  } else if (buttonState == LOW && buttonReset && (millis() - lastButton > 500)) {
+  } else if (buttonState == LOW && buttonReset && (millis() - lastButton > DEBOUNCE_MS)) {
     buttonReset = false;
   }
 }
@@ -872,7 +894,7 @@ void processButtons() {
 //----------------------------------------------------------------
 // Setup
 //----------------------------------------------------------------
-unsigned long nextSample = 0;
+static unsigned long nextSample = 0;
 
 void setup() {
   DEBUG_PORT.begin(115200);
@@ -936,8 +958,8 @@ void loop() {
   readISP2();
 
   if ((long)(millis() - nextSample) >= 0) {
-    nextSample += 80;  // Fixed 80ms interval, no drift
-    readmpu9250();
+    nextSample += SAMPLE_INTERVAL;  // Fixed interval, no drift
+    readMPU9250();
     readGPS();
     writeToLog();
   }
