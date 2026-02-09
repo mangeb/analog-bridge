@@ -129,8 +129,12 @@ td:first-child { text-align: left; color: #aaa; }
 .heatmap-cur { font-size: 0.8rem; color: #ccc; font-variant-numeric: tabular-nums; }
 
 /* G-G diagram */
-.gg-wrap { position: relative; width: 100%; max-width: 360px; margin: 0 auto; }
+.gg-wrap { position: relative; width: 360px; flex-shrink: 0; }
 .gg-wrap canvas { width: 100% !important; }
+.gg-stats table { width: 100%; font-size: 0.78rem; }
+.gg-stats td { padding: 3px 6px; color: #ccc; }
+.gg-stats td:first-child { color: #888; }
+.gg-stats .stat-val { font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* Values panel */
 .vals-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; font-size: 0.75rem; }
@@ -317,10 +321,24 @@ td:first-child { text-align: left; color: #aaa; }
     </details>
 
     <!-- G-G Diagram -->
-    <details>
-      <summary>G-G Diagram</summary>
-      <div class="panel"><div class="gg-wrap"><canvas id="ggCanvas" width="360" height="360"></canvas></div></div>
-    </details>
+    <div class="card">
+      <div class="card-header" onclick="toggleSection('ggBody')">
+        <h2>G-G Diagram</h2>
+        <span class="toggle-arrow open" id="ggBody_arrow">&#9656;</span>
+      </div>
+      <div class="card-summary hidden" id="ggBody_summary">
+        <div style="display:flex;gap:16px;align-items:center;font-variant-numeric:tabular-nums">
+          <span style="font-size:1.2rem;font-weight:700" id="ggCurMini">0.00g</span>
+          <span style="font-size:0.8rem;color:#888">Max: <span id="ggMaxMini" style="color:#ef5350">0.00g</span></span>
+        </div>
+      </div>
+      <div class="card-body" id="ggBody">
+        <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+          <div class="gg-wrap"><canvas id="ggCanvas" width="360" height="360"></canvas></div>
+          <div class="gg-stats" id="ggStats" style="flex:1;min-width:140px;font-size:0.8rem"></div>
+        </div>
+      </div>
+    </div>
 
     <!-- Keyframes & Export -->
     <details>
@@ -380,10 +398,11 @@ function toggleSection(id) {
   const collapsed = body.classList.toggle('collapsed');
   if (arrow) arrow.classList.toggle('open', !collapsed);
   if (summary) summary.classList.toggle('hidden', !collapsed);
-  // Redraw heatmap/map after expand
+  // Redraw heatmap/map/gg after expand
   if (!collapsed) {
     if (id === 'hmBody') setTimeout(() => drawHeatmap(), 50);
     if (id === 'mapBody' && leafletMap) setTimeout(() => leafletMap.invalidateSize(), 50);
+    if (id === 'ggBody') setTimeout(() => drawGG(), 50);
   }
 }
 
@@ -1239,9 +1258,10 @@ function updatePlaybackUI() {
     }
   }
 
-  // G-G diagram (live — only if panel is open)
-  const ggDetails = document.getElementById('ggCanvas')?.closest('details');
-  if (ggDetails?.open) drawGG();
+  // G-G diagram (live)
+  const ggCollapsed = document.getElementById('ggBody')?.classList.contains('collapsed');
+  if (!ggCollapsed) drawGG();
+  updateGGStats(raw);
 
   // Live values
   updateValsGrid(r, raw);
@@ -1398,6 +1418,53 @@ function drawGG() {
   }
 }
 
+function updateGGStats(raw) {
+  if (!raw || !rows.length) return;
+  const gLat = raw.accy, gLon = raw.accx;
+  const gCur = Math.sqrt(gLat**2 + gLon**2);
+
+  // Compute stats from all rows up to playIdx
+  let maxTotal = 0, maxBrake = 0, maxAccel = 0, maxLat = 0;
+  let sumLat = 0, sumLon = 0, sumTotal = 0;
+  const n = Math.min(playIdx + 1, rows.length);
+  for (let i = 0; i < n; i++) {
+    const r = rows[i];
+    const lat = Math.abs(r.accy), lon = r.accx;
+    const tot = Math.sqrt(r.accy**2 + r.accx**2);
+    if (tot > maxTotal) maxTotal = tot;
+    if (lon < -maxBrake) maxBrake = -lon;
+    if (lon > maxAccel) maxAccel = lon;
+    if (lat > maxLat) maxLat = lat;
+    sumLat += lat; sumLon += Math.abs(lon); sumTotal += tot;
+  }
+  const avgTotal = n > 0 ? sumTotal / n : 0;
+
+  // Update stats panel
+  const el = document.getElementById('ggStats');
+  if (el) {
+    el.innerHTML = `<table>
+      <tr><td>Current</td><td class="stat-val">${gCur.toFixed(3)}g</td></tr>
+      <tr><td>Lat / Lon</td><td class="stat-val">${gLat.toFixed(3)} / ${gLon.toFixed(3)}</td></tr>
+      <tr><td colspan="2" style="border-top:1px solid #1a3a5c;padding-top:6px;color:#4fc3f7;font-weight:500">Session Peak</td></tr>
+      <tr><td>Max Total</td><td class="stat-val" style="color:#ef5350">${maxTotal.toFixed(3)}g</td></tr>
+      <tr><td>Max Braking</td><td class="stat-val">${maxBrake.toFixed(3)}g</td></tr>
+      <tr><td>Max Accel</td><td class="stat-val">${maxAccel.toFixed(3)}g</td></tr>
+      <tr><td>Max Lateral</td><td class="stat-val">${maxLat.toFixed(3)}g</td></tr>
+      <tr><td colspan="2" style="border-top:1px solid #1a3a5c;padding-top:6px;color:#4fc3f7;font-weight:500">Averages</td></tr>
+      <tr><td>Avg G-Force</td><td class="stat-val">${avgTotal.toFixed(3)}g</td></tr>
+      <tr><td>Avg Lateral</td><td class="stat-val">${(n>0?sumLat/n:0).toFixed(3)}g</td></tr>
+      <tr><td>Avg Lon</td><td class="stat-val">${(n>0?sumLon/n:0).toFixed(3)}g</td></tr>
+      <tr><td>Samples</td><td class="stat-val">${n.toLocaleString()}</td></tr>
+    </table>`;
+  }
+
+  // Mini summary
+  const curMini = document.getElementById('ggCurMini');
+  const maxMini = document.getElementById('ggMaxMini');
+  if (curMini) curMini.textContent = gCur.toFixed(2) + 'g';
+  if (maxMini) maxMini.textContent = maxTotal.toFixed(2) + 'g';
+}
+
 // ══════════ KEYFRAMES ══════════
 function buildKeyframeList() {
   const el = document.getElementById('keyframeList');
@@ -1434,62 +1501,133 @@ function fmtTime(s) {
 }
 
 // ══════════ SYNTHETIC TEST DATA ══════════
+// Realistic route: Potrero Hill → 101S → 280S → Portola Valley
 function loadSyntheticData() {
-  // Generate ~60s of test data covering all conditions
   const rr = [];
-  const baseLat = 37.7749, baseLon = -122.4194; // SF
-  let lat = baseLat, lon = baseLon, dir = 90, spd = 0, mapV = 20;
-  let afr1 = 14.0, afr2 = 13.8, coolant = 180, oilp = 60;
+  const lerp = (a, b, f) => a + (b - a) * f;
+  const rnd = (lo, hi) => lo + Math.random() * (hi - lo);
 
+  // GPS waypoints along Potrero Hill → 280 → Portola
+  const waypoints = [
+    { lat: 37.7598, lon: -122.3927 }, // Potrero Hill - 18th & Wisconsin
+    { lat: 37.7558, lon: -122.3945 }, // Heading south on Wisconsin
+    { lat: 37.7510, lon: -122.3988 }, // Down the hill to Cesar Chavez
+    { lat: 37.7465, lon: -122.4035 }, // Cesar Chavez west
+    { lat: 37.7380, lon: -122.4025 }, // 101 on-ramp area
+    { lat: 37.7245, lon: -122.4050 }, // 101 south
+    { lat: 37.7100, lon: -122.4120 }, // 101/280 junction
+    { lat: 37.6950, lon: -122.4280 }, // 280 south past Daly City
+    { lat: 37.6700, lon: -122.4420 }, // 280 Pacifica area
+    { lat: 37.6400, lon: -122.4450 }, // 280 San Bruno Mtn
+    { lat: 37.6100, lon: -122.4380 }, // 280 south
+    { lat: 37.5800, lon: -122.4200 }, // 280 Crystal Springs
+    { lat: 37.5500, lon: -122.3950 }, // 280 Woodside
+    { lat: 37.5350, lon: -122.3800 }, // Sand Hill Rd exit
+    { lat: 37.5200, lon: -122.3650 }, // Alpine Rd
+    { lat: 37.5050, lon: -122.3580 }, // Portola Rd
+    { lat: 37.4900, lon: -122.3500 }, // Portola Valley center
+  ];
+
+  // Scenario segments: condition, duration, speed range, MAP, AFR, G characteristics, notes
   const scenarios = [
-    { dur: 5, cond: 'idle', spd: 0, map: 20, afr: 13.8 },
-    { dur: 5, cond: 'accel', spd: [0,30], map: [20,4], afr: 12.5 },
-    { dur: 8, cond: 'cruise_lt', spd: 35, map: 16, afr: 14.5 },
-    { dur: 5, cond: 'cruise_mod', spd: 45, map: 10, afr: 13.6 },
-    { dur: 4, cond: 'accel', spd: [45,70], map: [10,2], afr: 12.3 },
-    { dur: 6, cond: 'wot_high', spd: 80, map: 1.5, afr: 12.5 },
-    { dur: 4, cond: 'decel', spd: [80,40], map: [1.5,20], afr: 15.0 },
-    { dur: 6, cond: 'cruise_lt', spd: 35, map: 16, afr: 14.3 },
-    { dur: 3, cond: 'decel', spd: [35,5], map: [16,20], afr: 15.2 },
-    { dur: 4, cond: 'idle', spd: 0, map: 20, afr: 13.7 },
+    // Potrero Hill — cold-ish start, idle at top
+    { dur: 6, spd: 0, map: 20, afr: 13.8, accx: 0, accy: 0, wp: [0,0], note: 'idle_hilltop', kf: true },
+    // Pull out, gentle accel down Wisconsin
+    { dur: 4, spd: [0, 25], map: [20, 10], afr: 12.8, accx: [0.1, 0.2], accy: 0, wp: [0,1] },
+    // Steep downhill Potrero — braking, turns
+    { dur: 6, spd: [25, 30], map: [16, 18], afr: 14.5, accx: [-0.3, -0.15], accy: [-0.2, 0.2], wp: [1,2] },
+    // Stop sign at Cesar Chavez
+    { dur: 3, spd: [30, 0], map: [18, 20], afr: 15.0, accx: [-0.4, -0.1], accy: 0, wp: [2,2] },
+    { dur: 4, spd: 0, map: 20, afr: 13.7, accx: 0, accy: 0, wp: [2,2] },
+    // Light on Cesar Chavez — pull out with authority, BURNOUT!
+    { dur: 3, spd: [0, 15], map: [20, 2], afr: 11.8, accx: [0.4, 0.6], accy: [-0.05, 0.05], wp: [2,3], slip: 20 },
+    // Continue accel to 101 on-ramp
+    { dur: 5, spd: [15, 45], map: [4, 6], afr: 12.4, accx: [0.2, 0.35], accy: [-0.1, 0.1], wp: [3,4], kf: true },
+    // 101 merge — hard accel
+    { dur: 5, spd: [45, 70], map: [6, 2], afr: 12.2, accx: [0.3, 0.5], accy: [0, 0.15], wp: [4,5] },
+    // 101 cruise
+    { dur: 8, spd: 65, map: 10, afr: 13.7, accx: 0, accy: [-0.05, 0.05], wp: [5,6] },
+    // 101/280 junction — slight decel and curve
+    { dur: 4, spd: [65, 55], map: [10, 15], afr: 14.2, accx: [-0.1, 0], accy: [-0.25, -0.1], wp: [6,7] },
+    // 280 south — open throttle, WOT run!
+    { dur: 4, spd: [55, 85], map: [15, 1.5], afr: 12.3, accx: [0.3, 0.55], accy: [0, 0.1], wp: [7,8], kf: true },
+    // 280 WOT continued
+    { dur: 5, spd: [85, 95], map: 1.5, afr: 12.5, accx: [0.15, 0.3], accy: [-0.05, 0.05], wp: [8,9] },
+    // 280 high speed cruise
+    { dur: 10, spd: 75, map: 8, afr: 13.5, accx: [-0.02, 0.02], accy: [-0.08, 0.08], wp: [9,11] },
+    // 280 sweeping curves — Crystal Springs
+    { dur: 8, spd: 70, map: 9, afr: 13.6, accx: [-0.05, 0.05], accy: [-0.35, 0.35], wp: [11,12] },
+    // Hard braking for Sand Hill exit — tires skid briefly
+    { dur: 3, spd: [70, 35], map: [9, 20], afr: 15.5, accx: [-0.6, -0.35], accy: [0, 0.1], wp: [12,13], kf: true, slip: -8 },
+    // Exit ramp decel
+    { dur: 4, spd: [35, 15], map: [20, 18], afr: 14.8, accx: [-0.2, -0.1], accy: [-0.15, 0.15], wp: [13,14] },
+    // Alpine Rd — moderate cruise through trees
+    { dur: 8, spd: 35, map: 14, afr: 14.3, accx: [-0.05, 0.05], accy: [-0.2, 0.2], wp: [14,15] },
+    // Portola Rd — light cruise, rolling hills
+    { dur: 6, spd: 30, map: 16, afr: 14.5, accx: [-0.03, 0.08], accy: [-0.12, 0.12], wp: [15,16] },
+    // Pull over, idle in Portola Valley
+    { dur: 3, spd: [30, 0], map: [16, 20], afr: 15.0, accx: [-0.3, -0.1], accy: 0, wp: [16,16] },
+    { dur: 5, spd: 0, map: 20, afr: 13.8, accx: 0, accy: 0, wp: [16,16], kf: true },
   ];
 
   let t = 0;
+  let kfNum = 1;
   scenarios.forEach(sc => {
     const n = Math.round(sc.dur * 1000 / SAMPLE_MS);
-    for (let i = 0; i < n; i++) {
-      const frac = i / n;
-      const lerp = (a, b, f) => a + (b - a) * f;
-      const s = Array.isArray(sc.spd) ? lerp(sc.spd[0], sc.spd[1], frac) : sc.spd;
-      const m = Array.isArray(sc.map) ? lerp(sc.map[0], sc.map[1], frac) : sc.map;
-      const afrBase = sc.afr + (Math.random() - 0.5) * 0.4;
+    const wpStart = waypoints[sc.wp[0]], wpEnd = waypoints[sc.wp[1]];
+    const hasKf = sc.kf && n > 2;
+    const kfAt = hasKf ? Math.floor(n / 2) : -1;
 
-      lat += Math.cos(dir * Math.PI / 180) * s * 0.0000001;
-      lon += Math.sin(dir * Math.PI / 180) * s * 0.0000001;
-      dir += (Math.random() - 0.5) * 2;
+    for (let i = 0; i < n; i++) {
+      const frac = i / Math.max(1, n - 1);
+      const s = Array.isArray(sc.spd) ? lerp(sc.spd[0], sc.spd[1], frac) : sc.spd;
+      const m = (Array.isArray(sc.map) ? lerp(sc.map[0], sc.map[1], frac) : sc.map) + rnd(-0.3, 0.3);
+      const afrBase = sc.afr + rnd(-0.2, 0.2);
+
+      // GPS: interpolate between waypoints with slight wander
+      const lat = lerp(wpStart.lat, wpEnd.lat, frac) + rnd(-0.0001, 0.0001);
+      const lon = lerp(wpStart.lon, wpEnd.lon, frac) + rnd(-0.0001, 0.0001);
+      const dir = Math.atan2(wpEnd.lon - wpStart.lon, wpEnd.lat - wpStart.lat) * 180 / Math.PI + rnd(-3, 3);
+
+      // Acceleration
+      const ax = Array.isArray(sc.accx) ? lerp(sc.accx[0], sc.accx[1], frac) + rnd(-0.03, 0.03) : rnd(-0.03, 0.03);
+      const ay = Array.isArray(sc.accy) ? lerp(sc.accy[0], sc.accy[1], frac) + rnd(-0.02, 0.02) : rnd(-0.03, 0.03);
+
+      // VSS: normally matches GPS speed, but slip scenarios diverge
+      let vss = s + rnd(-1, 1);
+      if (sc.slip) {
+        // slip > 0 = wheelspin (VSS > GPS), slip < 0 = lockup (VSS < GPS)
+        const slipPeak = Math.abs(sc.slip);
+        const slipFrac = Math.sin(frac * Math.PI); // peaks in middle of segment
+        vss = s + Math.sign(sc.slip) * slipPeak * slipFrac + rnd(-1, 1);
+      }
 
       rr.push({
         idx: rr.length, time: t,
-        lat, lon, speed: s, alt: 50, dir: dir % 360, sats: 10 + Math.floor(Math.random() * 4),
-        accx: (Math.random()-0.5)*0.3, accy: (Math.random()-0.5)*0.15, accz: -0.98 + (Math.random()-0.5)*0.05,
-        rotx: (Math.random()-0.5)*5, roty: (Math.random()-0.5)*5, rotz: (Math.random()-0.5)*2,
-        magx: 20+Math.random()*5, magy: -10+Math.random()*3, magz: 40+Math.random()*5,
-        imuTemp: 28 + Math.random()*2,
-        afr: afrBase + (Math.random()-0.5)*0.2,
-        afr1: afrBase + 0.2 + (Math.random()-0.5)*0.2,
-        vss: s + (Math.random()-0.5)*2,
-        map: m + (Math.random()-0.5)*0.5,
-        oilp: 55 + s * 0.1 + (Math.random()-0.5)*3,
-        coolant: 185 + Math.random()*5,
-        gpsStale: false, keyframe: (rr.length === 200 || rr.length === 500) ? rr.length : 0,
+        lat, lon, speed: s, alt: lerp(90, 120, frac) + rnd(-2, 2),
+        dir: ((dir % 360) + 360) % 360,
+        sats: 10 + Math.floor(rnd(0, 4)),
+        accx: ax, accy: ay, accz: -0.98 + rnd(-0.02, 0.02),
+        rotx: rnd(-3, 3), roty: rnd(-3, 3), rotz: rnd(-1, 1),
+        magx: 20 + rnd(0, 5), magy: -10 + rnd(0, 3), magz: 40 + rnd(0, 5),
+        imuTemp: 28 + rnd(0, 2),
+        afr: afrBase + rnd(-0.1, 0.1),
+        afr1: afrBase + 0.15 + rnd(-0.1, 0.1),
+        vss: Math.max(0, vss),
+        map: Math.max(0, m),
+        oilp: 55 + s * 0.08 + rnd(-2, 2),
+        coolant: 185 + rnd(0, 5),
+        gpsStale: false,
+        keyframe: (i === kfAt) ? kfNum : 0,
         condition: 'UNKNOWN',
       });
+      if (i === kfAt) kfNum++;
       t += SAMPLE_MS / 1000;
     }
   });
 
   rows = rr;
-  filename = 'synthetic_test.csv';
+  filename = 'potrero_280_portola_demo.csv';
   detectAllConditions();
   applySmoothing();
   initUI();
