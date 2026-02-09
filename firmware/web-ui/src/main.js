@@ -120,15 +120,17 @@ function update(d) {
   else if (hasAfr1) afrAvg = afr1;
   else if (hasAfr2) afrAvg = afr2;
 
-  el.afrAvg.textContent = afrAvg > 0 ? afrAvg.toFixed(1) : '--';
-  el.afrAvg.className = 'gauge-value ' + afrClass(afrAvg);
+  const afrNoData = afrAvg <= 0;
+  el.afrAvg.textContent = afrNoData ? '--' : afrAvg.toFixed(1);
+  el.afrAvg.className = 'gauge-value ' + (afrNoData ? 'warn-oil' : afrClass(afrAvg));
+  el.afrCard.classList.toggle('alarm-active', afrNoData);
   el.afr1.textContent = hasAfr1 ? afr1.toFixed(1) : '--';
   el.afr2.textContent = hasAfr2 ? afr2.toFixed(1) : '--';
 
-  // Oil pressure — alarm if under 5 psi
+  // Oil pressure — alarm if under 5 psi (including 0 = engine off)
   const oilVal = d.eng.oil;
-  el.oil.textContent = oilVal > 0 ? Math.round(oilVal) : '--';
-  const oilAlarm = oilVal > 0 && oilVal < 5;
+  el.oil.textContent = Math.round(oilVal);
+  const oilAlarm = oilVal < 5;
   el.oil.className = 'gauge-value' + (oilAlarm ? ' warn-oil' : '');
   el.oilCard.classList.toggle('alarm-active', oilAlarm);
 
