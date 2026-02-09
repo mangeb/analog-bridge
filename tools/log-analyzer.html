@@ -50,13 +50,20 @@ h1 { font-size: 1.4rem; color: #4fc3f7; margin-bottom: 2px; }
 .chart-wrap { position: relative; width: 100%; height: 280px; }
 .chart-wrap canvas { width: 100% !important; height: 100% !important; }
 
-/* AFR Gauge */
-.afr-gauges { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 10px; }
-.afr-gauge .label { font-size: 0.75rem; color: #888; margin-bottom: 4px; }
-.afr-gauge .bar-bg { height: 16px; background: #0f1a30; border-radius: 3px; position: relative; overflow: hidden; }
-.afr-gauge .bar-fill { height: 100%; border-radius: 3px; transition: width 0.15s, background 0.15s; }
-.afr-gauge .reading { font-size: 1.1rem; font-weight: 600; color: #fff; margin-top: 4px; }
-.cond-row { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+/* AFR Gauge — Combined is hero, banks are secondary */
+.afr-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+.afr-hero .reading { font-size: 2rem; font-weight: 700; color: #fff; min-width: 70px; }
+.afr-hero .bar-bg { flex: 1; height: 20px; background: #0f1a30; border-radius: 4px; position: relative; overflow: hidden; }
+.afr-hero .bar-fill { height: 100%; border-radius: 4px; transition: width 0.15s, background 0.15s; }
+.afr-hero .target-line { position: absolute; top: 0; height: 100%; width: 2px; background: #fff; opacity: 0.7; z-index: 2; }
+.afr-hero .target-zone { position: absolute; top: 0; height: 100%; background: rgba(255,255,255,0.08); border-left: 1px dashed rgba(255,255,255,0.3); border-right: 1px dashed rgba(255,255,255,0.3); z-index: 1; }
+.afr-banks { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; opacity: 0.55; transition: opacity 0.2s; }
+.afr-banks:hover { opacity: 0.9; }
+.afr-banks .label { font-size: 0.7rem; color: #666; margin-bottom: 2px; }
+.afr-banks .bar-bg { height: 10px; background: #0f1a30; border-radius: 3px; position: relative; overflow: hidden; }
+.afr-banks .bar-fill { height: 100%; border-radius: 3px; transition: width 0.15s, background 0.15s; }
+.afr-banks .reading { font-size: 0.85rem; color: #999; margin-top: 2px; }
+.cond-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
 .cond-badge { padding: 4px 12px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
 .cond-target { font-size: 0.8rem; color: #888; }
 .cond-status { font-size: 0.8rem; font-weight: 600; }
@@ -65,6 +72,23 @@ h1 { font-size: 1.4rem; color: #4fc3f7; margin-bottom: 2px; }
 .cond-legend { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .cond-legend-item { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: #888; }
 .cond-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+/* Section collapse toggle */
+.card-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
+.card-header h2 { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+.card-header .toggle-arrow { font-size: 0.7rem; color: #555; transition: transform 0.2s; }
+.card-header .toggle-arrow.open { transform: rotate(90deg); }
+.card-body { overflow: hidden; transition: max-height 0.3s ease; }
+.card-body.collapsed { max-height: 0 !important; padding-top: 0; padding-bottom: 0; }
+.card-summary { font-size: 0.85rem; color: #ccc; margin-top: 6px; }
+
+/* Traction / filter indicators */
+.filter-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.filter-bar label { font-size: 0.75rem; color: #888; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.filter-bar input { width: auto; }
+.traction-warn { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 3px; font-size: 0.75rem; font-weight: 600; }
+.traction-warn.slip { background: rgba(255,82,82,0.15); color: #ff5252; }
+.traction-warn.ok { background: rgba(102,187,106,0.1); color: #66bb6a; }
 
 /* Map */
 #mapContainer { width: 100%; height: 320px; border-radius: 8px; overflow: hidden; }
@@ -158,6 +182,26 @@ td:first-child { text-align: left; color: #aaa; }
       </div>
     </div>
 
+    <!-- Filters & Indicators -->
+    <div class="card">
+      <div class="card-header" onclick="toggleSection('filterBody')">
+        <h2>Filters &amp; Data Quality</h2>
+        <span class="toggle-arrow open" id="filterBody_arrow">&#9656;</span>
+      </div>
+      <div class="card-body" id="filterBody">
+        <div class="filter-bar" id="filterBar">
+          <label><input type="checkbox" id="fltTraction" onchange="rebuildChart()" checked> Traction loss markers</label>
+          <label><input type="checkbox" id="fltGpsStale" onchange="rebuildChart()"> Flag GPS stale</label>
+          <label>Slip threshold: <input type="range" id="slipThreshold" min="1" max="15" value="5" style="width:80px" oninput="document.getElementById('slipThVal').textContent=this.value"><span id="slipThVal" style="color:#4fc3f7;min-width:20px">5</span> mph</label>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:4px">
+          <div class="traction-warn ok" id="tractionBadge">Traction OK</div>
+          <span style="font-size:0.75rem;color:#666" id="tractionDetail">VSS ≈ GPS</span>
+        </div>
+      </div>
+      <div class="card-summary hidden" id="filterBody_summary"><span class="traction-warn ok" id="tractionBadgeMini">OK</span></div>
+    </div>
+
     <!-- Timeline Chart -->
     <div class="card">
       <div class="ch-bar" id="channelBar"></div>
@@ -166,46 +210,77 @@ td:first-child { text-align: left; color: #aaa; }
 
     <!-- AFR Gauge + Condition -->
     <div class="card">
-      <h2>AFR Status</h2>
-      <div class="afr-gauges">
-        <div class="afr-gauge"><div class="label">Bank 1</div><div class="bar-bg"><div class="bar-fill" id="afrBar1"></div></div><div class="reading" id="afrVal1">—</div></div>
-        <div class="afr-gauge"><div class="label">Bank 2</div><div class="bar-bg"><div class="bar-fill" id="afrBar2"></div></div><div class="reading" id="afrVal2">—</div></div>
-        <div class="afr-gauge"><div class="label">Combined</div><div class="bar-bg"><div class="bar-fill" id="afrBarC"></div></div><div class="reading" id="afrValC">—</div></div>
+      <div class="card-header" onclick="toggleSection('afrBody')">
+        <h2>AFR Status</h2>
+        <span class="toggle-arrow open" id="afrBody_arrow">&#9656;</span>
       </div>
-      <div class="cond-row">
-        <div class="cond-badge" id="condBadge">—</div>
-        <div class="cond-target" id="condTarget">Target: —</div>
-        <div class="cond-status" id="condStatus"></div>
+      <!-- Summary shown when collapsed -->
+      <div class="card-summary hidden" id="afrBody_summary">
+        <span style="font-size:1.4rem;font-weight:700" id="afrValMini">—</span>
+        <span id="condStatusMini" style="margin-left:8px;font-weight:600">—</span>
+        <span id="condBadgeMini" style="margin-left:8px;padding:2px 8px;border-radius:3px;font-size:0.75rem;font-weight:600">—</span>
       </div>
-      <div class="cond-legend" id="condLegend"></div>
+      <div class="card-body" id="afrBody">
+        <!-- Combined: hero gauge -->
+        <div class="afr-hero">
+          <div class="reading" id="afrValC">—</div>
+          <div class="bar-bg">
+            <div class="bar-fill" id="afrBarC"></div>
+            <div class="target-zone" id="afrTargetZone"></div>
+          </div>
+          <div class="cond-status" id="condStatus" style="min-width:70px;text-align:right"></div>
+        </div>
+        <!-- Banks: secondary -->
+        <div class="afr-banks">
+          <div><div class="label">Bank 1</div><div class="bar-bg"><div class="bar-fill" id="afrBar1"></div></div><div class="reading" id="afrVal1">—</div></div>
+          <div><div class="label">Bank 2</div><div class="bar-bg"><div class="bar-fill" id="afrBar2"></div></div><div class="reading" id="afrVal2">—</div></div>
+        </div>
+        <div class="cond-row">
+          <div class="cond-badge" id="condBadge">—</div>
+          <div class="cond-target" id="condTarget">Target: —</div>
+        </div>
+        <div class="cond-legend" id="condLegend"></div>
+      </div>
     </div>
 
     <!-- AFR Heatmap -->
     <div class="card">
-      <h2>AFR Map — Est. RPM vs Load</h2>
-      <div class="heatmap-wrap">
-        <canvas id="afrHeatmap" height="320"></canvas>
-        <div class="heatmap-info">
-          <div class="heatmap-legend"><span>Rich 11</span><div class="heatmap-legend-bar" id="hmLegendBar"></div><span>15 Lean</span></div>
-          <div class="heatmap-cur" id="hmCurrent">—</div>
+      <div class="card-header" onclick="toggleSection('hmBody')">
+        <h2>AFR Map — Est. RPM vs Load</h2>
+        <span class="toggle-arrow open" id="hmBody_arrow">&#9656;</span>
+      </div>
+      <div class="card-summary hidden" id="hmBody_summary"><span style="font-size:0.8rem;color:#888" id="hmCurrentMini">—</span></div>
+      <div class="card-body" id="hmBody">
+        <div class="heatmap-wrap">
+          <canvas id="afrHeatmap" height="320"></canvas>
+          <div class="heatmap-info">
+            <div class="heatmap-legend"><span>Rich 11</span><div class="heatmap-legend-bar" id="hmLegendBar"></div><span>15 Lean</span></div>
+            <div class="heatmap-cur" id="hmCurrent">—</div>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- GPS Map -->
     <div class="card">
-      <h2>GPS Track</h2>
-      <div class="map-controls">
-        <label>Color by:</label>
-        <select id="mapMetric" onchange="updateMapRoute()">
-          <option value="afr">AFR</option>
-          <option value="speed">Speed</option>
-          <option value="map">MAP Vacuum</option>
-          <option value="gforce">G-Force</option>
-          <option value="condition">Condition</option>
-        </select>
+      <div class="card-header" onclick="toggleSection('mapBody')">
+        <h2>GPS Track</h2>
+        <span class="toggle-arrow open" id="mapBody_arrow">&#9656;</span>
       </div>
-      <div id="mapContainer"></div>
+      <div class="card-body" id="mapBody">
+        <div class="map-controls">
+          <label>Color by:</label>
+          <select id="mapMetric" onchange="updateMapRoute()">
+            <option value="afr">AFR</option>
+            <option value="speed">Speed</option>
+            <option value="map">MAP Vacuum</option>
+            <option value="gforce">G-Force</option>
+            <option value="condition">Condition</option>
+            <option value="traction">Traction (VSS-GPS)</option>
+          </select>
+        </div>
+        <div id="mapContainer"></div>
+      </div>
     </div>
 
     <!-- Current Values -->
@@ -287,6 +362,36 @@ const CHANNELS = {
 };
 const defaultChannels = ['afr', 'speed', 'map'];
 let activeChannels = new Set(defaultChannels);
+
+// ══════════ SECTION COLLAPSE ══════════
+function toggleSection(id) {
+  const body = document.getElementById(id);
+  const arrow = document.getElementById(id + '_arrow');
+  const summary = document.getElementById(id + '_summary');
+  if (!body) return;
+  const collapsed = body.classList.toggle('collapsed');
+  if (arrow) arrow.classList.toggle('open', !collapsed);
+  if (summary) summary.classList.toggle('hidden', !collapsed);
+  // Redraw heatmap/map after expand
+  if (!collapsed) {
+    if (id === 'hmBody') setTimeout(() => drawHeatmap(), 50);
+    if (id === 'mapBody' && leafletMap) setTimeout(() => leafletMap.invalidateSize(), 50);
+  }
+}
+
+// ══════════ TRACTION DETECTION ══════════
+const SLIP_THRESHOLD_DEFAULT = 5; // mph
+
+function getSlipThreshold() {
+  return parseInt(document.getElementById('slipThreshold')?.value || SLIP_THRESHOLD_DEFAULT);
+}
+
+function detectSlip(r) {
+  const vss = r.vss, gps = r.speed;
+  if (gps < 3 && vss < 3) return { slip: false, delta: 0 }; // ignore at near-stop
+  const delta = vss - gps;
+  return { slip: Math.abs(delta) > getSlipThreshold(), delta };
+}
 
 // ══════════ UPLOAD ══════════
 const uploadZone = document.getElementById('uploadZone');
@@ -574,6 +679,29 @@ function buildChart() {
     }
   };
 
+  // Traction loss overlay plugin — red markers at top of chart where VSS-GPS diverges
+  const tractionPlugin = {
+    id: 'traction',
+    afterDraw(chart) {
+      if (!document.getElementById('fltTraction')?.checked) return;
+      const { ctx, chartArea: { left, right, top }, scales: { x } } = chart;
+      if (!x) return;
+      const th = getSlipThreshold();
+      ctx.save();
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        const delta = r.vss - r.speed;
+        if (r.speed < 3 && r.vss < 3) continue;
+        if (Math.abs(delta) > th) {
+          const px = x.getPixelForValue(i);
+          ctx.fillStyle = delta > 0 ? 'rgba(255,82,82,0.6)' : 'rgba(255,152,0,0.6)';
+          ctx.fillRect(px, top, 2, 6);
+        }
+      }
+      ctx.restore();
+    }
+  };
+
   chart = new Chart(ctx, {
     type: 'line',
     data: { datasets: [] },
@@ -589,7 +717,7 @@ function buildChart() {
         x: { type: 'linear', display: true, ticks: { callback: v => fmtTime(smoothedRows[Math.round(v)]?.time || 0), color: '#666', maxTicksLimit: 10 }, grid: { color: '#1a3a5c33' } },
       },
     },
-    plugins: [condBgPlugin, cursorPlugin, keyframePlugin],
+    plugins: [condBgPlugin, cursorPlugin, keyframePlugin, tractionPlugin],
   });
   rebuildChart();
 }
@@ -735,6 +863,12 @@ function metricColor(r, metric) {
     case 'map': return valToColor(r.map, 0, 20, '#ef5350', '#66bb6a');
     case 'gforce': return valToColor(Math.sqrt(r.accx**2 + r.accy**2), 0, 1.5, '#66bb6a', '#ef5350');
     case 'condition': return CONDITIONS[r.condition]?.color || '#444';
+    case 'traction': {
+      const delta = Math.abs(r.vss - r.speed);
+      if (delta > getSlipThreshold()) return '#ff5252';
+      if (delta > getSlipThreshold() * 0.6) return '#ffa726';
+      return '#66bb6a';
+    }
     default: return '#4fc3f7';
   }
 }
@@ -1008,26 +1142,67 @@ function updatePlaybackUI() {
 
   // AFR gauges
   const afr1 = r.afr, afr2 = r.afr1, afrC = (afr1 + afr2) / 2;
-  updateAfrBar('afrBar1', 'afrVal1', afr1, raw.condition);
-  updateAfrBar('afrBar2', 'afrVal2', afr2, raw.condition);
-  updateAfrBar('afrBarC', 'afrValC', afrC, raw.condition);
-
-  // Condition
   const cond = CONDITIONS[raw.condition] || CONDITIONS.UNKNOWN;
+
+  // Combined hero gauge
+  updateAfrBar('afrBarC', 'afrValC', afrC);
+  // Bank gauges (secondary)
+  updateAfrBar('afrBar1', 'afrVal1', afr1);
+  updateAfrBar('afrBar2', 'afrVal2', afr2);
+
+  // Target zone overlay on combined gauge bar
+  const tgtZone = document.getElementById('afrTargetZone');
+  if (tgtZone) {
+    const lo = Math.max(0, ((cond.afr[0] - 10) / 6) * 100);
+    const hi = Math.min(100, ((cond.afr[1] - 10) / 6) * 100);
+    tgtZone.style.left = lo + '%';
+    tgtZone.style.width = (hi - lo) + '%';
+  }
+
+  // Condition badge
   const badge = document.getElementById('condBadge');
   badge.textContent = cond.label;
   badge.style.background = cond.color;
   badge.style.color = '#fff';
   document.getElementById('condTarget').textContent = `Target: ${cond.afr[0].toFixed(1)}–${cond.afr[1].toFixed(1)}`;
 
-  const mid = (cond.afr[0] + cond.afr[1]) / 2;
-  const dev = afrC - mid;
+  // Status text
+  let statusText, statusColor;
+  if (afrC < cond.afr[0] - 0.5) { statusText = 'LEAN!'; statusColor = '#ef5350'; }
+  else if (afrC < cond.afr[0]) { statusText = 'Lean'; statusColor = '#ffa726'; }
+  else if (afrC <= cond.afr[1]) { statusText = 'On Target'; statusColor = '#66bb6a'; }
+  else if (afrC <= cond.afr[1] + 0.5) { statusText = 'Rich'; statusColor = '#ffa726'; }
+  else { statusText = 'RICH!'; statusColor = '#ff7043'; }
+
   const statusEl = document.getElementById('condStatus');
-  if (afrC < cond.afr[0] - 0.5) { statusEl.textContent = 'LEAN!'; statusEl.style.color = '#ef5350'; }
-  else if (afrC < cond.afr[0]) { statusEl.textContent = 'Lean'; statusEl.style.color = '#ffa726'; }
-  else if (afrC <= cond.afr[1]) { statusEl.textContent = 'On Target'; statusEl.style.color = '#66bb6a'; }
-  else if (afrC <= cond.afr[1] + 0.5) { statusEl.textContent = 'Rich'; statusEl.style.color = '#ffa726'; }
-  else { statusEl.textContent = 'RICH!'; statusEl.style.color = '#ff7043'; }
+  statusEl.textContent = statusText;
+  statusEl.style.color = statusColor;
+
+  // Mini summary for collapsed view
+  const miniVal = document.getElementById('afrValMini');
+  const miniStatus = document.getElementById('condStatusMini');
+  const miniBadge = document.getElementById('condBadgeMini');
+  if (miniVal) { miniVal.textContent = afrC.toFixed(2); miniVal.style.color = afrToColor(afrC); }
+  if (miniStatus) { miniStatus.textContent = statusText; miniStatus.style.color = statusColor; }
+  if (miniBadge) { miniBadge.textContent = cond.label; miniBadge.style.background = cond.color; miniBadge.style.color = '#fff'; }
+
+  // Traction detection
+  const { slip, delta } = detectSlip(raw);
+  const tBadge = document.getElementById('tractionBadge');
+  const tDetail = document.getElementById('tractionDetail');
+  const tMini = document.getElementById('tractionBadgeMini');
+  if (slip) {
+    const dir = delta > 0 ? 'wheelspin' : 'lockup';
+    tBadge.className = 'traction-warn slip';
+    tBadge.textContent = `SLIP — ${dir}`;
+    tDetail.textContent = `VSS ${raw.vss.toFixed(1)} vs GPS ${raw.speed.toFixed(1)} (Δ${delta.toFixed(1)} mph)`;
+    if (tMini) { tMini.className = 'traction-warn slip'; tMini.textContent = `SLIP Δ${Math.abs(delta).toFixed(0)}`; }
+  } else {
+    tBadge.className = 'traction-warn ok';
+    tBadge.textContent = 'Traction OK';
+    tDetail.textContent = `VSS ${raw.vss.toFixed(1)} ≈ GPS ${raw.speed.toFixed(1)}`;
+    if (tMini) { tMini.className = 'traction-warn ok'; tMini.textContent = 'OK'; }
+  }
 
   // Map marker
   if (playMarker && raw.lat && raw.lon) playMarker.setLatLng([raw.lat, raw.lon]);
@@ -1035,21 +1210,30 @@ function updatePlaybackUI() {
   // Chart cursor
   if (chart) chart.update('none');
 
-  // Heatmap
-  populateHeatmapUpTo(playIdx);
-  drawHeatmap();
+  // Heatmap (skip if collapsed)
+  if (!document.getElementById('hmBody')?.classList.contains('collapsed')) {
+    populateHeatmapUpTo(playIdx);
+    drawHeatmap();
+  } else {
+    // Still populate data even when collapsed, just skip drawing
+    populateHeatmapUpTo(playIdx);
+    const hmMini = document.getElementById('hmCurrentMini');
+    if (hmMini && raw) {
+      const rpm = estimateRPM(raw.vss || raw.speed);
+      hmMini.textContent = `RPM ≈${Math.round(rpm)} | MAP ${raw.map.toFixed(1)}" | AFR ${afrC.toFixed(2)}`;
+    }
+  }
 
   // Live values
   updateValsGrid(r, raw);
 }
 
-function updateAfrBar(barId, valId, afr, condition) {
-  const cond = CONDITIONS[condition] || CONDITIONS.UNKNOWN;
+function updateAfrBar(barId, valId, afr) {
   const pct = Math.max(0, Math.min(100, ((afr - 10) / 6) * 100));
   const el = document.getElementById(barId);
-  el.style.width = pct + '%';
-  el.style.background = afrToColor(afr);
-  document.getElementById(valId).textContent = afr.toFixed(2);
+  if (el) { el.style.width = pct + '%'; el.style.background = afrToColor(afr); }
+  const valEl = document.getElementById(valId);
+  if (valEl) valEl.textContent = afr.toFixed(2);
 }
 
 // ══════════ LIVE VALUES ══════════
