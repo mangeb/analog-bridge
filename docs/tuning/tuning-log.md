@@ -41,7 +41,7 @@
 ## Drivetrain Reference
 
 - **Transmission:** Tremec TKO 600 5-speed manual — 1st: 2.87 | 2nd: 1.89 | 3rd: 1.28 | 4th: 1.00 | 5th: 0.64 (overdrive)
-- **Rear end:** GM 10-bolt, 3.73 final gears, Eaton limited slip differential, 32-spline axles
+- **Rear end:** GM 10-bolt, 3.73 final gears, Eaton limited slip differential, 30-spline axles
 - **Tire:** 235/70R15 (7.316 ft circumference)
 - **Highway cruise RPM (5th gear, 0.64 OD):** ~1700 RPM @ 60 mph, ~2000 RPM @ 70 mph, ~2300 RPM @ 80 mph
 - **Tuning note:** With 5 forward gears the engine spends more time in cruise and light-load bands. The 0.64 OD drops RPM significantly vs 4th — watch for secondary enrichment/lean-out on the 4th→5th transition at highway speed. The 3.73 final keeps 1st through 3rd punchy for street driving.

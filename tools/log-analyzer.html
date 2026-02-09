@@ -202,17 +202,18 @@ td:first-child { text-align: left; color: #aaa; }
       </div>
     </div>
 
-    <!-- Filters & Indicators -->
+    <!-- Filters + Timeline Chart (paired) -->
     <div class="card">
       <div class="card-header" onclick="toggleSection('filterBody')">
-        <h2>Filters &amp; Data Quality</h2>
+        <h2>Filters &amp; Overlays</h2>
         <span class="toggle-arrow open" id="filterBody_arrow">&#9656;</span>
       </div>
       <div class="card-body" id="filterBody">
         <div class="filter-bar" id="filterBar">
-          <label><input type="checkbox" id="fltTraction" onchange="rebuildChart()" checked> Traction loss markers</label>
-          <label><input type="checkbox" id="fltOnTarget" onchange="rebuildChart()" checked> AFR on-target strip</label>
-          <label><input type="checkbox" id="fltGpsStale" onchange="rebuildChart()"> Flag GPS stale</label>
+          <label><input type="checkbox" id="fltTraction" onchange="rebuildChart()" checked> Traction loss</label>
+          <label><input type="checkbox" id="fltOnTarget" onchange="rebuildChart()" checked> AFR on-target</label>
+          <label><input type="checkbox" id="fltGear" onchange="rebuildChart()" checked> Gear indicator</label>
+          <label><input type="checkbox" id="fltGpsStale" onchange="rebuildChart()"> GPS stale</label>
           <label>Slip threshold: <input type="range" id="slipThreshold" min="1" max="15" value="5" style="width:80px" oninput="document.getElementById('slipThVal').textContent=this.value"><span id="slipThVal" style="color:#4fc3f7;min-width:20px">5</span> mph</label>
         </div>
         <div style="display:flex;align-items:center;gap:12px;margin-top:4px">
@@ -221,12 +222,10 @@ td:first-child { text-align: left; color: #aaa; }
         </div>
       </div>
       <div class="card-summary hidden" id="filterBody_summary"><span class="traction-warn ok" id="tractionBadgeMini">OK</span></div>
-    </div>
-
-    <!-- Timeline Chart -->
-    <div class="card">
-      <div class="ch-bar" id="channelBar"></div>
-      <div class="chart-wrap"><canvas id="timelineChart"></canvas></div>
+      <div style="border-top:1px solid #1a3a5c;margin-top:8px;padding-top:10px">
+        <div class="ch-bar" id="channelBar"></div>
+        <div class="chart-wrap"><canvas id="timelineChart"></canvas></div>
+      </div>
     </div>
 
     <!-- AFR Gauge + Condition -->
@@ -781,6 +780,48 @@ function buildChart() {
     }
   };
 
+  // Gear indicator plugin — numbered circles on timeline at gear change points
+  const gearPlugin = {
+    id: 'gear',
+    afterDraw(chart) {
+      if (!document.getElementById('fltGear')?.checked) return;
+      const { ctx, chartArea: { left, right, top, bottom }, scales: { x } } = chart;
+      if (!x || !rows.length) return;
+      ctx.save();
+      const midY = bottom - 18; // above the on-target strip
+      let prevGear = -1;
+      const circR = 9;
+      const gearColors = ['#ef5350','#ffa726','#ffc107','#66bb6a','#4fc3f7'];
+      for (let i = 0; i < rows.length; i++) {
+        const spd = rows[i].vss || rows[i].speed;
+        const gi = spd < 2 ? -1 : estimateGear(spd);
+        if (gi !== prevGear && gi >= 0) {
+          const px = x.getPixelForValue(i);
+          if (px >= left && px <= right) {
+            // Circle
+            ctx.beginPath(); ctx.arc(px, midY, circR, 0, Math.PI * 2);
+            ctx.fillStyle = gearColors[gi] || '#888';
+            ctx.globalAlpha = 0.85;
+            ctx.fill();
+            // Border
+            ctx.strokeStyle = '#0f1a30';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            // Number
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = '#0f1a30';
+            ctx.font = 'bold 11px sans-serif';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(gi + 1, px, midY);
+          }
+          prevGear = gi;
+        }
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+  };
+
   chart = new Chart(ctx, {
     type: 'line',
     data: { datasets: [] },
@@ -797,7 +838,7 @@ function buildChart() {
       },
       layout: { padding: { bottom: 8 } },
     },
-    plugins: [condBgPlugin, onTargetPlugin, cursorPlugin, keyframePlugin, tractionPlugin],
+    plugins: [condBgPlugin, onTargetPlugin, gearPlugin, cursorPlugin, keyframePlugin, tractionPlugin],
   });
   rebuildChart();
 }
@@ -977,23 +1018,28 @@ function afrToColor(afr) {
 
 // ══════════ RPM ESTIMATION ══════════
 // Tremec TKO 600 5-speed: 1st=2.87, 2nd=1.89, 3rd=1.28, 4th=1.00, 5th=0.64(OD)
-// Rear: GM 10-bolt, 3.73 final, Eaton limited slip, 32-spline axles
+// Rear: GM 10-bolt, 3.73 final, Eaton limited slip, 30-spline axles
 // Tire: 235/70R15, circumference=2.23m=7.316ft
+// Street shift points (~3000 RPM upshifts): 60 mph in 4th ≈ 2690 RPM
 const GEARS = [2.87, 1.89, 1.28, 1.00, 0.64];
+const GEAR_LABELS = ['1st', '2nd', '3rd', '4th', '5th'];
 const FINAL_DRIVE = 3.73;
 const TIRE_CIRC_FT = 7.316;
+
+function estimateGear(speedMph) {
+  if (speedMph < 2) return 0;    // idle / 1st
+  if (speedMph < 20) return 0;   // 1st
+  if (speedMph < 35) return 1;   // 2nd
+  if (speedMph < 50) return 2;   // 3rd
+  if (speedMph < 70) return 3;   // 4th
+  return 4;                       // 5th (OD)
+}
 
 function estimateRPM(speedMph) {
   if (speedMph < 2) return 700; // idle
   const fpm = speedMph * 88; // feet per minute
-  // Auto-detect gear from speed (shift points ~5000 RPM)
-  let gear;
-  if (speedMph < 35) gear = GEARS[0];       // 1st
-  else if (speedMph < 55) gear = GEARS[1];  // 2nd
-  else if (speedMph < 80) gear = GEARS[2];  // 3rd
-  else if (speedMph < 95) gear = GEARS[3];  // 4th
-  else gear = GEARS[4];                      // 5th (OD)
-  return (fpm * FINAL_DRIVE * gear) / TIRE_CIRC_FT;
+  const gi = estimateGear(speedMph);
+  return (fpm * FINAL_DRIVE * GEARS[gi]) / TIRE_CIRC_FT;
 }
 
 // ══════════ AFR HEATMAP ══════════
@@ -1336,10 +1382,12 @@ function updatePlaybackUI() {
   if (!ggCollapsed) drawGG();
   updateGGStats(raw);
 
-  // Engine sound — update RPM
-  const curRPM = estimateRPM(raw.vss || raw.speed);
+  // Engine sound — update RPM + gear
+  const curSpd = raw.vss || raw.speed;
+  const curRPM = estimateRPM(curSpd);
+  const curGear = curSpd < 2 ? 'N' : GEAR_LABELS[estimateGear(curSpd)];
   updateEngineSound(curRPM);
-  if (!engineSoundOn) document.getElementById('rpmReadout').textContent = `${Math.round(curRPM)} RPM`;
+  document.getElementById('rpmReadout').textContent = `${Math.round(curRPM)} RPM [${curGear}]`;
 
   // Live values
   updateValsGrid(r, raw);

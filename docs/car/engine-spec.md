@@ -155,7 +155,7 @@
 - **Housing:** GM 10-bolt
 - **Gear Ratio:** 3.73
 - **Posi:** Eaton limited slip differential
-- **Axles:** 32-spline
+- **Axles:** 30-spline
 - **Yoke:** 1350
 - **Driveshaft:** Custom
 - **U-Joints:** 353
