@@ -565,6 +565,61 @@ static void printRow(Print &out, float now) {
   out.println(data.gpsStale ? 1 : 0);
 }
 
+// Compact human-readable live debug output, rate-limited to 2Hz.
+// Format: single line with fixed-width fields so terminal doesn't jump.
+// Shows the most important values at a glance while tuning.
+static unsigned long lastLiveDebug = 0;
+static void printLiveDebug(float now) {
+  // 2Hz update rate — fast enough to see changes, slow enough to read
+  if (millis() - lastLiveDebug < 500) return;
+  lastLiveDebug = millis();
+
+  // Time and recording indicator
+  DEBUG_PORT.print(now, 1);
+  DEBUG_PORT.print(isRecording ? F("s [REC] ") : F("s       "));
+
+  // Speed and GPS quality
+  char buf[10];
+  dtostrf(data.speed, 5, 1, buf);
+  DEBUG_PORT.print(buf);
+  DEBUG_PORT.print(F("mph "));
+  DEBUG_PORT.print(data.satellites);
+  DEBUG_PORT.print(F("sat"));
+  DEBUG_PORT.print(data.gpsStale ? F("! ") : F("  "));
+
+  // AFR (the most watched value on a wideband)
+  DEBUG_PORT.print(F("AFR "));
+  dtostrf(data.afr, 4, 1, buf);
+  DEBUG_PORT.print(buf);
+  DEBUG_PORT.print('/');
+  dtostrf(data.afr1, 4, 1, buf);
+  DEBUG_PORT.print(buf);
+
+  // RPM and MAP
+  DEBUG_PORT.print(F("  "));
+  dtostrf(data.rpm, 5, 0, buf);
+  DEBUG_PORT.print(buf);
+  DEBUG_PORT.print(F("rpm "));
+  dtostrf(data.map, 5, 1, buf);
+  DEBUG_PORT.print(buf);
+  DEBUG_PORT.print(F("\"Hg"));
+
+  // Oil pressure and coolant — the "is the engine happy" gauges
+  DEBUG_PORT.print(F("  OIL"));
+  dtostrf(data.oilp, 3, 0, buf);
+  DEBUG_PORT.print(buf);
+  DEBUG_PORT.print(F(" CLT"));
+  dtostrf(data.coolant, 4, 0, buf);
+  DEBUG_PORT.print(buf);
+
+  // G-force (lateral is most interesting for driving)
+  DEBUG_PORT.print(F("  G "));
+  dtostrf(data.accy, 5, 2, buf);
+  DEBUG_PORT.print(buf);
+
+  DEBUG_PORT.println();
+}
+
 static void writeToLog() {
 #ifdef TIMING_DEBUG
   long tm0 = millis();
@@ -584,7 +639,7 @@ static void writeToLog() {
 #ifdef SERIAL_DEBUG
   printRow(DEBUG_PORT, now);
 #else
-  if (liveDebug) printRow(DEBUG_PORT, now);
+  if (liveDebug) printLiveDebug(now);
 #endif
 
   if (isRecording) {
