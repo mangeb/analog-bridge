@@ -56,6 +56,26 @@
   border: 1px solid #1e293b;
 }
 
+/* ── Recording buttons (large, prominent) ── */
+.rec-btn {
+  @apply relative flex flex-col items-center justify-center
+         bg-slate-900 hover:bg-slate-800 active:bg-slate-700
+         border border-slate-700 rounded-xl py-4 px-2
+         transition-colors cursor-pointer;
+}
+
+.rec-icon {
+  @apply text-4xl leading-none;
+}
+
+.rec-label {
+  @apply text-sm text-slate-300 mt-1 font-medium;
+}
+
+.rec-key {
+  @apply absolute bottom-1.5 right-2 text-[9px] font-mono text-slate-600;
+}
+
 /* ── Serial command buttons ── */
 .cmd-group {
   @apply border-t border-slate-800 pt-2;

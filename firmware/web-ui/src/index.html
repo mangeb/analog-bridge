@@ -75,6 +75,37 @@
       </div>
     </section>
 
+    <!-- Recording Controls (prominent) -->
+    <section class="grid grid-cols-3 gap-3">
+      <button class="rec-btn cmd-btn" data-cmd="r">
+        <span class="rec-icon">&#9210;</span>
+        <span class="rec-label">Start</span>
+        <span class="rec-key">r</span>
+      </button>
+      <button class="rec-btn cmd-btn" data-cmd="s">
+        <span class="rec-icon">&#9209;</span>
+        <span class="rec-label">Stop</span>
+        <span class="rec-key">s</span>
+      </button>
+      <button class="rec-btn cmd-btn" data-cmd="k">
+        <span class="rec-icon">&#9873;</span>
+        <span class="rec-label">Keyframe</span>
+        <span class="rec-key">k</span>
+      </button>
+    </section>
+
+    <!-- Recording Info -->
+    <div id="rec-info" class="hidden gauge-card text-xs">
+      <div class="flex justify-between">
+        <span>File: <span id="rec-file" class="font-mono">--</span></span>
+        <span><span id="rec-rows">0</span> rows</span>
+      </div>
+      <div class="flex justify-between mt-1">
+        <span>Duration: <span id="rec-dur">0.0</span>s</span>
+        <span>Keyframes: <span id="rec-kf">0</span></span>
+      </div>
+    </div>
+
     <!-- IMU Detail (collapsible) -->
     <details class="gauge-card">
       <summary class="gauge-label cursor-pointer">IMU Detail</summary>
@@ -92,43 +123,10 @@
       </div>
     </details>
 
-    <!-- Recording Info -->
-    <div id="rec-info" class="hidden gauge-card text-xs">
-      <div class="flex justify-between">
-        <span>File: <span id="rec-file" class="font-mono">--</span></span>
-        <span><span id="rec-rows">0</span> rows</span>
-      </div>
-      <div class="flex justify-between mt-1">
-        <span>Duration: <span id="rec-dur">0.0</span>s</span>
-        <span>Keyframes: <span id="rec-kf">0</span></span>
-      </div>
-    </div>
-
     <!-- Serial Commands -->
     <details class="gauge-card" id="cmd-panel">
       <summary class="gauge-label cursor-pointer">Commands</summary>
       <div class="mt-3 space-y-2">
-        <!-- Recording -->
-        <div class="cmd-group">
-          <div class="cmd-group-label">Recording</div>
-          <div class="grid grid-cols-3 gap-2">
-            <button class="cmd-btn" data-cmd="r">
-              <span class="cmd-icon">&#9210;</span>
-              <span class="cmd-desc">Start</span>
-              <span class="cmd-key">r</span>
-            </button>
-            <button class="cmd-btn" data-cmd="s">
-              <span class="cmd-icon">&#9209;</span>
-              <span class="cmd-desc">Stop</span>
-              <span class="cmd-key">s</span>
-            </button>
-            <button class="cmd-btn" data-cmd="k">
-              <span class="cmd-icon">&#9873;</span>
-              <span class="cmd-desc">Keyframe</span>
-              <span class="cmd-key">k</span>
-            </button>
-          </div>
-        </div>
         <!-- Display -->
         <div class="cmd-group">
           <div class="cmd-group-label">Display</div>
