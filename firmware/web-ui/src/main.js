@@ -3,7 +3,13 @@
  *
  *  Connects to ws://<host>/ws, receives JSON at 5Hz,
  *  updates all gauge elements and the G-force canvas.
+ *
+ *  Falls back to demo mode (simulated Potrero Hill → Portola Valley
+ *  route data) when WebSocket connection is unavailable — e.g. when
+ *  opened as a standalone file or served from a dev server.
  */
+
+import { startDemo, stopDemo, isDemoRunning } from './demo.js';
 
 // DOM element cache
 const el = {
@@ -152,16 +158,34 @@ function update(d) {
 }
 
 //----------------------------------------------------------------
-// WebSocket connection with auto-reconnect
+// WebSocket connection with auto-reconnect + demo fallback
 //----------------------------------------------------------------
 let ws = null;
 let reconnectTimer = null;
+let failCount = 0;
+const DEMO_AFTER_FAILS = 2; // Enter demo after 2 failed WS attempts (~4s)
+
+function enterDemoMode() {
+  el.wsDot.className = 'w-2 h-2 rounded-full bg-amber-500 transition-colors';
+  el.wsStatus.textContent = 'Demo Mode';
+  startDemo(update);
+}
 
 function connect() {
+  // file:// can't do WebSocket — go straight to demo
+  if (location.protocol === 'file:') {
+    enterDemoMode();
+    return;
+  }
+
   const url = `ws://${location.host}/ws`;
   ws = new WebSocket(url);
 
   ws.onopen = () => {
+    failCount = 0;
+    // If demo was running, stop it — live data takes over
+    if (isDemoRunning()) stopDemo();
+
     el.wsDot.className = 'w-2 h-2 rounded-full bg-green-500 transition-colors';
     el.wsStatus.textContent = 'Connected';
     if (reconnectTimer) {
@@ -171,10 +195,15 @@ function connect() {
   };
 
   ws.onclose = () => {
+    failCount++;
     el.wsDot.className = 'w-2 h-2 rounded-full bg-red-500 transition-colors';
     el.wsStatus.textContent = 'Disconnected';
-    // Auto-reconnect after 2 seconds
-    reconnectTimer = setTimeout(connect, 2000);
+
+    if (failCount >= DEMO_AFTER_FAILS && !isDemoRunning()) {
+      enterDemoMode();
+    } else if (!isDemoRunning()) {
+      reconnectTimer = setTimeout(connect, 2000);
+    }
   };
 
   ws.onerror = () => {
