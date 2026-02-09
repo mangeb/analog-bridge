@@ -149,6 +149,7 @@ td:first-child { text-align: left; color: #aaa; }
 .sound-controls label { font-size: 0.75rem; color: #888; display: flex; align-items: center; gap: 4px; }
 .sound-controls input[type=range] { width: 70px; }
 .sound-controls .rpm-readout { font-size: 0.8rem; font-weight: 600; color: #ffa726; font-variant-numeric: tabular-nums; min-width: 70px; }
+.gear-circle { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; font-size: 0.85rem; font-weight: 700; color: #0f1a30; background: #666; border: 2px solid #0f1a30; box-shadow: 0 0 6px rgba(0,0,0,0.4); }
 </style>
 </head>
 <body>
@@ -198,6 +199,7 @@ td:first-child { text-align: left; color: #aaa; }
       <div class="sound-controls">
         <button id="btnSound" onclick="toggleEngineSound()">&#128266; Engine Sound</button>
         <label>Vol <input type="range" id="sndVolume" min="0" max="100" value="40" oninput="setEngineVolume(this.value)"></label>
+        <span class="gear-circle" id="gearCircle">N</span>
         <span class="rpm-readout" id="rpmReadout">— RPM</span>
       </div>
     </div>
@@ -508,8 +510,9 @@ function parseCSV(text) {
     });
   }
 
-  // Detect conditions
+  // Detect conditions & gears
   detectAllConditions();
+  detectAllGears();
   applySmoothing();
 }
 
@@ -789,18 +792,16 @@ function buildChart() {
       if (!x || !rows.length) return;
       ctx.save();
       const midY = bottom - 18; // above the on-target strip
-      let prevGear = -1;
+      let prevGear = -99;
       const circR = 9;
-      const gearColors = ['#ef5350','#ffa726','#ffc107','#66bb6a','#4fc3f7'];
       for (let i = 0; i < rows.length; i++) {
-        const spd = rows[i].vss || rows[i].speed;
-        const gi = spd < 2 ? -1 : estimateGear(spd);
+        const gi = rows[i].gear !== undefined ? rows[i].gear : -1;
         if (gi !== prevGear && gi >= 0) {
           const px = x.getPixelForValue(i);
           if (px >= left && px <= right) {
             // Circle
             ctx.beginPath(); ctx.arc(px, midY, circR, 0, Math.PI * 2);
-            ctx.fillStyle = gearColors[gi] || '#888';
+            ctx.fillStyle = GEAR_COLORS[gi] || '#888';
             ctx.globalAlpha = 0.85;
             ctx.fill();
             // Border
@@ -1016,30 +1017,89 @@ function afrToColor(afr) {
   return '#4caf50';
 }
 
-// ══════════ RPM ESTIMATION ══════════
+// ══════════ RPM & GEAR ESTIMATION ══════════
 // Tremec TKO 600 5-speed: 1st=2.87, 2nd=1.89, 3rd=1.28, 4th=1.00, 5th=0.64(OD)
 // Rear: GM 10-bolt, 3.73 final, Eaton limited slip, 30-spline axles
 // Tire: 235/70R15, circumference=2.23m=7.316ft
-// Street shift points (~3000 RPM upshifts): 60 mph in 4th ≈ 2690 RPM
 const GEARS = [2.87, 1.89, 1.28, 1.00, 0.64];
 const GEAR_LABELS = ['1st', '2nd', '3rd', '4th', '5th'];
+const GEAR_COLORS = ['#ef5350','#ffa726','#ffc107','#66bb6a','#4fc3f7'];
 const FINAL_DRIVE = 3.73;
 const TIRE_CIRC_FT = 7.316;
+const IDLE_RPM = 950;
 
-function estimateGear(speedMph) {
-  if (speedMph < 2) return 0;    // idle / 1st
-  if (speedMph < 20) return 0;   // 1st
-  if (speedMph < 35) return 1;   // 2nd
-  if (speedMph < 50) return 2;   // 3rd
-  if (speedMph < 70) return 3;   // 4th
-  return 4;                       // 5th (OD)
+// Min speed to hold a gear (below → must downshift)
+const GEAR_MIN_SPD = [0, 8, 16, 25, 40];
+// Speed where RPM would exceed ~5200 in this gear → force upshift
+const GEAR_MAX_SPD = [20, 36, 54, 72, 999];
+// Cruise hold time before upshift (samples)
+const CRUISE_HOLD = Math.round(5000 / SAMPLE_MS); // 5 seconds
+
+function detectAllGears() {
+  let curGear = 0;
+  let cruiseCount = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const spd = r.vss || r.speed;
+    const cond = r.condition;
+
+    // Idle / stopped → neutral
+    if (spd < 3) { curGear = 0; cruiseCount = 0; r.gear = -1; continue; }
+
+    // Force downshift if too slow for current gear
+    while (curGear > 0 && spd < GEAR_MIN_SPD[curGear]) { curGear--; cruiseCount = 0; }
+
+    // Force upshift if revving past max in current gear
+    while (curGear < 4 && spd > GEAR_MAX_SPD[curGear]) { curGear++; cruiseCount = 0; }
+
+    // Cruise upshift: after 5s of steady driving, shift up if viable
+    const isCruise = (cond === 'CRUISE_LT' || cond === 'CRUISE_MOD');
+    if (isCruise) {
+      cruiseCount++;
+      if (cruiseCount >= CRUISE_HOLD && curGear < 4 && spd >= GEAR_MIN_SPD[curGear + 1]) {
+        curGear++;
+        cruiseCount = 0;
+      }
+    }
+
+    // Acceleration / WOT → downshift if lugging (RPM < 2200 in current gear)
+    if (cond === 'ACCEL' || cond === 'WOT_LOW' || cond === 'WOT_MID' || cond === 'WOT_HIGH') {
+      cruiseCount = 0; // reset cruise timer
+      if (curGear > 0) {
+        const rpmNow = (spd * 88 * FINAL_DRIVE * GEARS[curGear]) / TIRE_CIRC_FT;
+        if (rpmNow < 2200 && spd >= GEAR_MIN_SPD[curGear - 1]) {
+          curGear--;
+        }
+      }
+    }
+
+    // Decel → don't upshift, allow engine braking; downshift handled by min speed
+    if (cond === 'DECEL') { cruiseCount = 0; }
+
+    r.gear = curGear;
+  }
 }
 
-function estimateRPM(speedMph) {
-  if (speedMph < 2) return 700; // idle
-  const fpm = speedMph * 88; // feet per minute
-  const gi = estimateGear(speedMph);
-  return (fpm * FINAL_DRIVE * GEARS[gi]) / TIRE_CIRC_FT;
+function rpmFromGear(speedMph, gearIdx) {
+  if (speedMph < 3 || gearIdx < 0) return IDLE_RPM;
+  const gi = Math.max(0, Math.min(4, gearIdx));
+  return (speedMph * 88 * FINAL_DRIVE * GEARS[gi]) / TIRE_CIRC_FT;
+}
+
+// Convenience: get RPM for a row (uses stored gear if available)
+function estimateRPM(speedMph, row) {
+  if (speedMph < 3) return IDLE_RPM;
+  const gi = (row && row.gear !== undefined && row.gear >= 0) ? row.gear : fallbackGear(speedMph);
+  return (speedMph * 88 * FINAL_DRIVE * GEARS[gi]) / TIRE_CIRC_FT;
+}
+
+// Fallback for when rows haven't been processed yet
+function fallbackGear(speedMph) {
+  if (speedMph < 20) return 0;
+  if (speedMph < 36) return 1;
+  if (speedMph < 54) return 2;
+  if (speedMph < 72) return 3;
+  return 4;
 }
 
 // ══════════ AFR HEATMAP ══════════
@@ -1068,7 +1128,7 @@ function hmColFromRPM(rpm) { return Math.max(0, Math.min(HM_COLS - 1, Math.round
 function hmRowFromMAP(mapV) { return Math.max(0, Math.min(HM_ROWS - 1, HM_ROWS - 1 - Math.round((mapV - HM_MAP_MIN) / HM_MAP_STEP))); }
 
 function addRowToHeatmap(r) {
-  const rpm = estimateRPM(r.vss || r.speed);
+  const rpm = estimateRPM(r.vss || r.speed, r);
   const col = hmColFromRPM(rpm);
   const row = hmRowFromMAP(r.map);
   const afr = (r.afr + r.afr1) / 2;
@@ -1094,7 +1154,7 @@ function populateHeatmapUpTo(idx) {
   const trailStart = Math.max(0, idx - TRAIL_LEN);
   for (let i = trailStart; i <= idx; i++) {
     const r = rows[i];
-    const rpm = estimateRPM(r.vss || r.speed);
+    const rpm = estimateRPM(r.vss || r.speed, r);
     hmTrail.push({ col: hmColFromRPM(rpm), row: hmRowFromMAP(r.map), afr: (r.afr + r.afr1) / 2 });
   }
 }
@@ -1224,9 +1284,10 @@ function drawHeatmap() {
   // Current readout
   if (rows.length > 0 && playIdx < rows.length) {
     const r = rows[playIdx];
-    const rpm = estimateRPM(r.vss || r.speed);
+    const rpm = estimateRPM(r.vss || r.speed, r);
+    const gi = r.gear >= 0 ? GEAR_LABELS[r.gear] : 'N';
     const afr = ((r.afr + r.afr1) / 2).toFixed(2);
-    document.getElementById('hmCurrent').textContent = `RPM ≈${Math.round(rpm)} | MAP ${r.map.toFixed(1)}" | AFR ${afr}`;
+    document.getElementById('hmCurrent').textContent = `RPM ≈${Math.round(rpm)} [${gi}] | MAP ${r.map.toFixed(1)}" | AFR ${afr}`;
   }
 }
 
@@ -1372,7 +1433,7 @@ function updatePlaybackUI() {
     populateHeatmapUpTo(playIdx);
     const hmMini = document.getElementById('hmCurrentMini');
     if (hmMini && raw) {
-      const rpm = estimateRPM(raw.vss || raw.speed);
+      const rpm = estimateRPM(raw.vss || raw.speed, raw);
       hmMini.textContent = `RPM ≈${Math.round(rpm)} | MAP ${raw.map.toFixed(1)}" | AFR ${afrC.toFixed(2)}`;
     }
   }
@@ -1384,10 +1445,18 @@ function updatePlaybackUI() {
 
   // Engine sound — update RPM + gear
   const curSpd = raw.vss || raw.speed;
-  const curRPM = estimateRPM(curSpd);
-  const curGear = curSpd < 2 ? 'N' : GEAR_LABELS[estimateGear(curSpd)];
+  const curRPM = estimateRPM(curSpd, raw);
+  const curGearIdx = raw.gear !== undefined ? raw.gear : fallbackGear(curSpd);
+  const curGearLabel = curGearIdx < 0 ? 'N' : GEAR_LABELS[curGearIdx];
+  const curGearColor = curGearIdx < 0 ? '#666' : GEAR_COLORS[curGearIdx];
   updateEngineSound(curRPM);
-  document.getElementById('rpmReadout').textContent = `${Math.round(curRPM)} RPM [${curGear}]`;
+  // RPM text + gear circle
+  document.getElementById('rpmReadout').textContent = `${Math.round(curRPM)} RPM`;
+  const gearCircle = document.getElementById('gearCircle');
+  if (gearCircle) {
+    gearCircle.textContent = curGearIdx < 0 ? 'N' : (curGearIdx + 1);
+    gearCircle.style.background = curGearColor;
+  }
 
   // Live values
   updateValsGrid(r, raw);
@@ -1642,12 +1711,15 @@ function startEngineSound() {
   master.gain.setValueAtTime(vol * 0.5, audioCtx.currentTime);
   master.connect(audioCtx.destination);
 
+  // 950 RPM idle: firing freq = 950/60*4 = 63.3 Hz
+  const idleFreq = (IDLE_RPM / 60) * 4;
+
   // === Layer 1: Primary firing frequency (sawtooth for aggressive V8 bark) ===
   const osc1 = audioCtx.createOscillator();
   const gain1 = audioCtx.createGain();
   osc1.type = 'sawtooth';
-  osc1.frequency.setValueAtTime(46.7, audioCtx.currentTime); // 700 RPM idle: 700/60*4=46.7Hz
-  gain1.gain.setValueAtTime(0.30, audioCtx.currentTime);
+  osc1.frequency.setValueAtTime(idleFreq, audioCtx.currentTime);
+  gain1.gain.setValueAtTime(0.22, audioCtx.currentTime);
   osc1.connect(gain1);
   gain1.connect(master);
   osc1.start();
@@ -1656,8 +1728,8 @@ function startEngineSound() {
   const osc2 = audioCtx.createOscillator();
   const gain2 = audioCtx.createGain();
   osc2.type = 'triangle';
-  osc2.frequency.setValueAtTime(23.3, audioCtx.currentTime); // half of firing freq
-  gain2.gain.setValueAtTime(0.35, audioCtx.currentTime);
+  osc2.frequency.setValueAtTime(idleFreq * 0.5, audioCtx.currentTime);
+  gain2.gain.setValueAtTime(0.40, audioCtx.currentTime); // dominant at idle for deep throb
   osc2.connect(gain2);
   gain2.connect(master);
   osc2.start();
@@ -1666,8 +1738,8 @@ function startEngineSound() {
   const osc3 = audioCtx.createOscillator();
   const gain3 = audioCtx.createGain();
   osc3.type = 'square';
-  osc3.frequency.setValueAtTime(93.3, audioCtx.currentTime);
-  gain3.gain.setValueAtTime(0.08, audioCtx.currentTime);
+  osc3.frequency.setValueAtTime(idleFreq * 2, audioCtx.currentTime);
+  gain3.gain.setValueAtTime(0.05, audioCtx.currentTime); // quiet at idle
   osc3.connect(gain3);
   gain3.connect(master);
   osc3.start();
@@ -1676,8 +1748,8 @@ function startEngineSound() {
   const osc4 = audioCtx.createOscillator();
   const gain4 = audioCtx.createGain();
   osc4.type = 'sine';
-  osc4.frequency.setValueAtTime(11.7, audioCtx.currentTime); // quarter firing freq
-  gain4.gain.setValueAtTime(0.20, audioCtx.currentTime);
+  osc4.frequency.setValueAtTime(idleFreq * 0.25, audioCtx.currentTime);
+  gain4.gain.setValueAtTime(0.28, audioCtx.currentTime); // strong at idle for that deep rumble
   osc4.connect(gain4);
   gain4.connect(master);
   osc4.start();
@@ -1691,11 +1763,11 @@ function startEngineSound() {
   noise.buffer = noiseBuffer;
   noise.loop = true;
   const noiseGain = audioCtx.createGain();
-  noiseGain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+  noiseGain.gain.setValueAtTime(0.03, audioCtx.currentTime);
   // Band-pass the noise around firing freq for more realism
   const noiseBP = audioCtx.createBiquadFilter();
   noiseBP.type = 'bandpass';
-  noiseBP.frequency.setValueAtTime(80, audioCtx.currentTime);
+  noiseBP.frequency.setValueAtTime(idleFreq, audioCtx.currentTime);
   noiseBP.Q.setValueAtTime(1.5, audioCtx.currentTime);
   noise.connect(noiseBP);
   noiseBP.connect(noiseGain);
@@ -1703,12 +1775,12 @@ function startEngineSound() {
   noise.start();
 
   // === Master low-pass for muffled big-block character ===
-  // Rewire: disconnect master from dest, put LP between
+  // At idle: very dark/muffled, opens up with RPM
   master.disconnect();
   const lp = audioCtx.createBiquadFilter();
   lp.type = 'lowpass';
-  lp.frequency.setValueAtTime(300, audioCtx.currentTime);
-  lp.Q.setValueAtTime(2.0, audioCtx.currentTime);
+  lp.frequency.setValueAtTime(180, audioCtx.currentTime); // lower cutoff = deeper idle
+  lp.Q.setValueAtTime(2.5, audioCtx.currentTime);
   master.connect(lp);
   lp.connect(audioCtx.destination);
 
@@ -1750,19 +1822,16 @@ function updateEngineSound(rpm) {
   // Noise bandpass tracks firing freq
   sndNodes.noiseBP.frequency.setTargetAtTime(firingFreq * 1.5, t, 0.08);
 
-  // Dynamic gain: louder at high RPM, sub-harmonic fades, harmonics grow
-  const rpmNorm = Math.min(1, (rpm - 700) / 5500); // 0 at idle, 1 at 6200
-  sndNodes.gain1.gain.setTargetAtTime(0.25 + rpmNorm * 0.15, t, 0.05);
-  sndNodes.gain2.gain.setTargetAtTime(0.35 - rpmNorm * 0.15, t, 0.05); // sub-harmonic fades at high RPM
-  sndNodes.gain3.gain.setTargetAtTime(0.06 + rpmNorm * 0.10, t, 0.05); // harmonics grow
-  sndNodes.gain4.gain.setTargetAtTime(0.20 - rpmNorm * 0.08, t, 0.05);
-  sndNodes.noiseGain.gain.setTargetAtTime(0.03 + rpmNorm * 0.06, t, 0.05); // more noise at high RPM
+  // Dynamic gain: deep at idle, brighter at high RPM
+  const rpmNorm = Math.min(1, (rpm - IDLE_RPM) / 5000); // 0 at idle, 1 at ~6000
+  sndNodes.gain1.gain.setTargetAtTime(0.20 + rpmNorm * 0.20, t, 0.05);
+  sndNodes.gain2.gain.setTargetAtTime(0.40 - rpmNorm * 0.20, t, 0.05); // sub-harmonic dominates at idle, fades
+  sndNodes.gain3.gain.setTargetAtTime(0.04 + rpmNorm * 0.12, t, 0.05); // harmonics grow
+  sndNodes.gain4.gain.setTargetAtTime(0.28 - rpmNorm * 0.16, t, 0.05); // exhaust throb fades
+  sndNodes.noiseGain.gain.setTargetAtTime(0.02 + rpmNorm * 0.06, t, 0.05);
 
-  // LP filter opens up at higher RPM — engine gets brighter
-  sndNodes.lp.frequency.setTargetAtTime(250 + rpmNorm * 600, t, 0.08);
-
-  // RPM display
-  document.getElementById('rpmReadout').textContent = `${Math.round(rpm)} RPM`;
+  // LP filter: very dark at idle (180 Hz), opens to ~900 Hz at high RPM
+  sndNodes.lp.frequency.setTargetAtTime(180 + rpmNorm * 720, t, 0.08);
 }
 
 // ══════════ UTILS ══════════
@@ -1900,6 +1969,7 @@ function loadSyntheticData() {
   rows = rr;
   filename = 'potrero_280_portola_demo.csv';
   detectAllConditions();
+  detectAllGears();
   applySmoothing();
   initUI();
 }
