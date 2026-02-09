@@ -93,6 +93,7 @@ The Holley 80531 was factory-calibrated for the **GM 502 HO crate engine (461 HP
 - Rear secondary PV (3.5 inHg) should be tested after spring swap — on big vac-sec carbs it aids the pri-to-sec transition, unlike smaller Holleys where pulling it is standard advice.
 - 850 CFM is well-matched: engine needs 859 CFM at 6500 RPM (cam's upper range). Vacuum secondaries self-regulate, so "oversized" is not a concern.
 - Primary PV (4.5 inHg) is correctly sized: rule of thumb is half idle vacuum (10/2 = 5.0), 4.5 gives 5.5 inHg margin.
+- Mechanical advance all-in at 2900 RPM is aggressive — 502 HO doesn't reach total until 4000 RPM. The bigger cam wants timing early, but this puts full advance under heavy load in low gears (2500-3500 RPM zone). Monitor for detonation under load; if knock occurs, stiffen advance springs to push all-in to ~3500 RPM or pull 2° initial (14° BTDC). Aluminum heads buy margin here but 10.6:1 on 91 octane isn't unlimited.
 
 ## Recommended Tuning Sequence
 
