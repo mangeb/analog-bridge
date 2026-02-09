@@ -34,6 +34,17 @@
 - **Head Gasket:** Edelbrock #7302, steel core laminate (Fel-Pro), 4.370" bore, .039" compressed, 9.70 cc
 - **Valve Covers:** Moroso #6896, cast aluminum, ARP stainless bolts (400-7508)
 
+### Head Flow Data — Edelbrock #60459 @ 28" H₂O
+
+| Lift (in) | Intake CFM | Exhaust CFM |
+|-----------|-----------|------------|
+| .100 | 74 | 71 |
+| .200 | 143 | 128 |
+| .300 | 207 | 153 |
+| .400 | 250 | 178 |
+| .500 | 284 | 200 |
+| .600 | 309 | 218 |
+
 ## Cam
 - **Camshaft:** Edelbrock Rollin' Thunder #2261, hydraulic roller (2014 upgrade, replaced Performer RPM cam from #2095 kit — .560"/.573" lift)
 - **Duration @ .050":** 236° intake / 245° exhaust

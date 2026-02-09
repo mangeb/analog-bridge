@@ -22,3 +22,4 @@
 - [x] ~~Fill in engine spec~~ (2026-02-08) - Completed with full carb calibration, ignition profile, and tuning targets
 - [x] ~~Implement real ISP2 parsing~~ (2026-02-08) - Replaced random() stub with header-sync state machine, LC-1 AFR decoding (float math), and aux channel extraction. Fixes: double-indexing bug, integer division AFR=0 bug from InnovateTest. Mega uses Serial2 hardware UART.
 - [x] ~~Confirm head chamber cc and valve sizes~~ (2026-02-08) - Edelbrock #60459: 110cc chamber, 2.19"/1.88" valves, 290cc intake runner, 26° valve angle
+- [x] ~~Build torque/HP estimator~~ (2026-02-08) - HTML/JS tool in `tools/torque-hp-estimator.html` with semi-empirical model from head flow + cam profile. Pre-loaded with Nova 454 specs, Edelbrock #60459 flow data, old cam overlay comparison
