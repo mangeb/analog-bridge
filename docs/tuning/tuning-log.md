@@ -71,9 +71,26 @@ The Holley 80531 was factory-calibrated for the **GM 502 HO crate engine (461 HP
 | Acc pump cam | (factory) | Pink #1 (aggressive) | OK — compensates for softer vacuum signal |
 | PVCR | (factory) | .063" | Evaluate after secondaries are opening |
 
+## Key Conclusions
+
+- The 80531 was designed for a 502 HO (461 HP) with a much milder cam (.510/.540, 211/230) and 9% more displacement. Every tuning issue on this 454 traces back to that mismatch.
+- The WOT lean condition (14-15:1 AFR) is almost certainly the secondaries not opening, not a primary-side fuel delivery problem. The primaries are well-calibrated (78 jets, stable cruise AFR).
+- Pink secondary spring is factory stock for the 80531 — it was sized for a 502's stronger vacuum signal. The 457ci simply doesn't pull hard enough to overcome it under street driving.
+- The +2 secondary jet bump (82→84) and larger squirter (.040→.042) were correct moves, but won't matter until the secondaries actually open.
+- After spring swap, secondary jets may need another +2 (to 86) given the higher CR (10.6 vs 8.75) and better-flowing oval port heads at .625" lift.
+- Rear secondary PV (3.5 inHg) should be tested after spring swap — on big vac-sec carbs it aids the pri-to-sec transition, unlike smaller Holleys where pulling it is standard advice.
+- 850 CFM is well-matched: engine needs 859 CFM at 6500 RPM (cam's upper range). Vacuum secondaries self-regulate, so "oversized" is not a concern.
+- Primary PV (4.5 inHg) is correctly sized: rule of thumb is half idle vacuum (10/2 = 5.0), 4.5 gives 5.5 inHg margin.
+
 ## Recommended Tuning Sequence
 
-White spring → verify secondaries open (paperclip test) → test rear PV in/out (log AFR through sec transition) → adjust PVCR → final WOT AFR eval. Do one change at a time, log each session below.
+1. White spring → verify secondaries open (paperclip test)
+2. Test rear PV in/out (log AFR through secondary transition)
+3. Re-evaluate secondary jetting (84 may need +2 to 86)
+4. Adjust PVCR (reduce from .063" toward ~.055")
+5. Final WOT AFR eval — target 12.5-12.8:1
+
+One change at a time. Log each session below.
 
 ## Session History
 
