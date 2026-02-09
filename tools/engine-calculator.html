@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Engine Calculator — 1969 Nova 454 BBC</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; display: flex; justify-content: center; padding: 24px; }
+  .container { max-width: 780px; width: 100%; }
+  h1 { font-size: 1.4rem; color: #4fc3f7; margin-bottom: 4px; }
+  .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 20px; }
+  .card { background: #16213e; border-radius: 10px; padding: 20px; margin-bottom: 14px; border: 1px solid #1a3a5c; }
+  .card h2 { font-size: 1rem; color: #4fc3f7; margin-bottom: 14px; border-bottom: 1px solid #1a3a5c; padding-bottom: 8px; }
+  .row { display: flex; align-items: center; margin-bottom: 10px; gap: 10px; }
+  .row label { flex: 1; font-size: 0.85rem; color: #b0b0b0; }
+  .row input, .row select { width: 90px; padding: 6px 8px; border: 1px solid #2a4a6c; border-radius: 5px; background: #0f1a30; color: #fff; font-size: 0.9rem; text-align: right; }
+  .row select { width: 150px; text-align: left; }
+  .row input:focus, .row select:focus { outline: none; border-color: #4fc3f7; }
+  .row .unit { width: 44px; font-size: 0.8rem; color: #666; text-align: left; }
+  .row .calc { color: #4fc3f7; font-size: 0.85rem; font-weight: 500; width: 90px; text-align: right; }
+  .reset-btn { background: none; border: 1px solid #333; color: #888; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+  .reset-btn:hover { border-color: #4fc3f7; color: #4fc3f7; }
+
+  /* Dashboard */
+  .dash { background: linear-gradient(135deg, #1a3a5c, #16213e); border: 1px solid #4fc3f7; }
+  .dash-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; text-align: center; padding: 12px 0; }
+  .dash-item .val { font-size: 2.2rem; font-weight: 700; color: #fff; }
+  .dash-item .lbl { font-size: 0.75rem; color: #888; margin-top: 2px; }
+  .dash-item .sub { font-size: 0.72rem; color: #4fc3f7; }
+  .dash-item.hp .val { color: #ff7043; }
+  .dash-item.hp .sub { color: #ff7043; }
+  .dash-item.dcr .val { color: #ffa726; }
+  .dash-item.dcr .sub { color: #ffa726; }
+  .dash-row2 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; text-align: center; padding: 0 0 8px; }
+  .dash-sm .val { font-size: 1.1rem; font-weight: 600; color: #ccc; }
+  .dash-sm .lbl { font-size: 0.7rem; color: #666; }
+
+  /* Chart */
+  .chart-container { position: relative; width: 100%; height: 340px; margin: 12px 0; }
+  canvas { width: 100%; height: 100%; }
+  .chart-legend { display: flex; gap: 20px; justify-content: center; font-size: 0.78rem; margin-top: 6px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 12px; height: 3px; border-radius: 2px; }
+
+  /* Collapsible sections */
+  details { margin-bottom: 14px; }
+  details > summary { background: #16213e; border: 1px solid #1a3a5c; border-radius: 10px; padding: 12px 20px; cursor: pointer; font-size: 0.95rem; color: #4fc3f7; font-weight: 500; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::after { content: '▸'; transition: transform 0.2s; font-size: 0.8rem; color: #555; }
+  details[open] > summary::after { transform: rotate(90deg); }
+  details[open] > summary { border-radius: 10px 10px 0 0; border-bottom: 1px solid #1a3a5c; }
+  details > .panel { background: #16213e; border: 1px solid #1a3a5c; border-top: none; border-radius: 0 0 10px 10px; padding: 16px 20px; }
+
+  /* Flow table */
+  .flow-row { display: grid; grid-template-columns: 60px 1fr 1fr; gap: 8px; margin-bottom: 6px; align-items: center; }
+  .flow-row .lbl { font-size: 0.8rem; color: #888; }
+  .flow-header { font-size: 0.75rem; color: #4fc3f7; font-weight: 600; }
+  .flow-row input { width: 65px; padding: 4px 6px; font-size: 0.8rem; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 10px; }
+  th { color: #4fc3f7; text-align: right; padding: 4px 8px; border-bottom: 1px solid #1a3a5c; }
+  th:first-child { text-align: left; }
+  td { text-align: right; padding: 4px 8px; color: #ccc; }
+  td:first-child { text-align: left; color: #888; }
+  tr.hl td { color: #4fc3f7; font-weight: 600; }
+  tr.hl-hp td { color: #ff7043; font-weight: 600; }
+  tr.hl-dcr td { color: #ffa726; font-weight: 600; }
+
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .checkbox-row input[type="checkbox"] { width: auto; }
+  .checkbox-row label { font-size: 0.85rem; color: #b0b0b0; flex: none; }
+  .note { font-size: 0.73rem; color: #555; margin-top: 8px; font-style: italic; }
+  .cam-tag { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 0.7rem; font-weight: 600; margin-left: 6px; }
+  .cam-roller { background: #ff7043; color: #1a1a2e; }
+  .cam-flat { background: #4fc3f7; color: #1a1a2e; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Engine Performance Calculator</h1>
+  <p class="subtitle">1969 Chevrolet Nova — 454 BBC .030 Over &nbsp;|&nbsp; CR + DCR + Torque/HP from head flow & cam profile</p>
+
+  <!-- ═══════════ DASHBOARD ═══════════ -->
+  <div class="card dash">
+    <div class="dash-grid">
+      <div class="dash-item"><div class="val" id="dTq">—</div><div class="lbl">Peak Torque (lb-ft)</div><div class="sub" id="dTqAt">—</div></div>
+      <div class="dash-item hp"><div class="val" id="dHp">—</div><div class="lbl">Peak Horsepower</div><div class="sub" id="dHpAt">—</div></div>
+      <div class="dash-item"><div class="val" id="dCr">—</div><div class="lbl">Static CR</div><div class="sub">:1</div></div>
+    </div>
+    <div class="dash-row2">
+      <div class="dash-sm"><div class="val" id="dDisp">—</div><div class="lbl">Displacement (ci)</div></div>
+      <div class="dash-sm dcr"><div class="val" id="dDcr">—</div><div class="lbl">Dynamic CR</div></div>
+      <div class="dash-sm"><div class="val" id="dVe">—</div><div class="lbl">Peak VE %</div></div>
+    </div>
+    <p class="note">Semi-empirical model from head flow + cam profile. ±5-8% vs dyno typical.</p>
+  </div>
+
+  <!-- ═══════════ CHART ═══════════ -->
+  <div class="card">
+    <div class="chart-container"><canvas id="chartCanvas"></canvas></div>
+    <div class="chart-legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#4fc3f7"></div>Torque</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff7043"></div>HP</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#66bb6a"></div>VE %</div>
+    </div>
+    <div class="checkbox-row" style="justify-content:center;margin-top:10px">
+      <input type="checkbox" id="showOldCam">
+      <label for="showOldCam">Overlay previous cam (Performer RPM #7162)</label>
+    </div>
+  </div>
+
+  <!-- ═══════════ COLLAPSIBLE INPUTS ═══════════ -->
+
+  <details>
+    <summary>Engine Dimensions</summary>
+    <div class="panel">
+      <div class="row"><label>Bore</label><input id="bore" type="number" step="0.001" value="4.280"><span class="unit">in</span></div>
+      <div class="row"><label>Stroke</label><input id="stroke" type="number" step="0.001" value="4.000"><span class="unit">in</span></div>
+      <div class="row"><label>Cylinders</label><input id="cylinders" type="number" step="1" value="8"><span class="unit"></span></div>
+      <div class="row"><label>Rod Length (CTC)</label><input id="rodLen" type="number" step="0.001" value="6.385"><span class="unit">in</span></div>
+      <div class="row"><label>Displacement</label><span class="calc" id="dispCi">—</span><span class="unit">ci</span></div>
+    </div>
+  </details>
+
+  <details>
+    <summary>Combustion Chamber & Gasket</summary>
+    <div class="panel">
+      <div class="row"><label>Chamber Volume</label><input id="chamber" type="number" step="0.1" value="110"><span class="unit">cc</span></div>
+      <div class="row"><label>Dome Volume (+cc)</label><input id="dome" type="number" step="0.1" value="26"><span class="unit">cc</span></div>
+      <div class="row"><label>Deck Clearance</label><input id="deck" type="number" step="0.001" value="0.020"><span class="unit">in</span></div>
+      <div class="row"><label>Gasket Bore</label><input id="gasketBore" type="number" step="0.001" value="4.370"><span class="unit">in</span></div>
+      <div class="row"><label>Gasket Thickness (compressed)</label><input id="gasketThick" type="number" step="0.001" value="0.039"><span class="unit">in</span></div>
+    </div>
+  </details>
+
+  <details>
+    <summary>Camshaft — Rollin' Thunder #2261</summary>
+    <div class="panel">
+      <div class="row"><label>Duration @ .050" (intake)</label><input id="intDur050" type="number" step="1" value="236"><span class="unit">°</span></div>
+      <div class="row"><label>Advertised Duration (intake)</label><input id="intDurAdv" type="number" step="1" value="335"><span class="unit">°</span></div>
+      <div class="row"><label>Max Intake Lift</label><input id="intLift" type="number" step="0.001" value="0.625"><span class="unit">in</span></div>
+      <div class="row"><label>Intake Centerline</label><input id="intCL" type="number" step="1" value="109"><span class="unit">° ATDC</span></div>
+      <div class="row"><label>Lobe Separation Angle</label><input id="lsa" type="number" step="1" value="112"><span class="unit">°</span></div>
+      <div class="row"><label>Cam Type</label>
+        <select id="camType"><option value="roller">Hydraulic Roller</option><option value="flat">Hydraulic Flat Tappet</option><option value="solid_roller">Solid Roller</option></select><span class="unit"></span></div>
+      <div class="row"><label>Overlap (auto)</label><span class="calc" id="overlap">—</span><span class="unit">°</span></div>
+      <div class="row"><label>IVC (° ABDC)</label><span class="calc" id="ivc">—</span><span class="unit">°</span></div>
+    </div>
+  </details>
+
+  <details>
+    <summary>Head Flow — Edelbrock #60459 @ 28" H₂O</summary>
+    <div class="panel">
+      <p class="note" style="margin-bottom:12px">Edit values to match your heads (ported, different brand, etc.)</p>
+      <div class="flow-row"><span class="flow-header">Lift</span><span class="flow-header">Intake CFM</span><span class="flow-header">Exhaust CFM</span></div>
+      <div class="flow-row"><span class="lbl">.100"</span><input class="flow-int" data-lift="0.100" type="number" value="74"><input class="flow-exh" data-lift="0.100" type="number" value="71"></div>
+      <div class="flow-row"><span class="lbl">.200"</span><input class="flow-int" data-lift="0.200" type="number" value="143"><input class="flow-exh" data-lift="0.200" type="number" value="128"></div>
+      <div class="flow-row"><span class="lbl">.300"</span><input class="flow-int" data-lift="0.300" type="number" value="207"><input class="flow-exh" data-lift="0.300" type="number" value="153"></div>
+      <div class="flow-row"><span class="lbl">.400"</span><input class="flow-int" data-lift="0.400" type="number" value="250"><input class="flow-exh" data-lift="0.400" type="number" value="178"></div>
+      <div class="flow-row"><span class="lbl">.500"</span><input class="flow-int" data-lift="0.500" type="number" value="284"><input class="flow-exh" data-lift="0.500" type="number" value="200"></div>
+      <div class="flow-row"><span class="lbl">.600"</span><input class="flow-int" data-lift="0.600" type="number" value="309"><input class="flow-exh" data-lift="0.600" type="number" value="218"></div>
+      <div class="flow-row"><span class="lbl">.700"</span><input class="flow-int" data-lift="0.700" type="number" value="315"><input class="flow-exh" data-lift="0.700" type="number" value="222"></div>
+    </div>
+  </details>
+
+  <details>
+    <summary>Intake & Exhaust</summary>
+    <div class="panel">
+      <div class="row"><label>Intake Manifold</label>
+        <select id="manifold"><option value="dual_airgap">Dual Plane Air-Gap (#7561)</option><option value="dual_std">Dual Plane Standard</option><option value="single">Single Plane</option></select><span class="unit"></span></div>
+      <div class="row"><label>Carburetor CFM</label><input id="carbCfm" type="number" step="1" value="850"><span class="unit">CFM</span></div>
+      <div class="row"><label>Header Primary</label><input id="headerPri" type="number" step="0.125" value="1.875"><span class="unit">in</span></div>
+      <div class="row"><label>Exhaust System</label>
+        <select id="exhaustType"><option value="muffled">Full Exhaust w/ Mufflers</option><option value="cutouts">Open Cutouts</option><option value="race">Race Headers (open)</option></select><span class="unit"></span></div>
+    </div>
+  </details>
+
+  <details>
+    <summary>Conditions & RPM Range</summary>
+    <div class="panel">
+      <div class="row"><label>Altitude</label><input id="altitude" type="number" step="100" value="0"><span class="unit">ft</span></div>
+      <div class="row"><label>Air Temperature</label><input id="airTemp" type="number" step="1" value="77"><span class="unit">°F</span></div>
+      <div class="row"><label>WOT Air/Fuel Ratio</label><input id="afr" type="number" step="0.1" value="12.8"><span class="unit">:1</span></div>
+      <div class="row"><label>Min RPM</label><input id="rpmMin" type="number" step="100" value="1500"><span class="unit">RPM</span></div>
+      <div class="row"><label>Max RPM</label><input id="rpmMax" type="number" step="100" value="6500"><span class="unit">RPM</span></div>
+      <div class="row"><label>Air Density Correction</label><span class="calc" id="densityCorr">—</span><span class="unit"></span></div>
+    </div>
+  </details>
+
+  <div style="text-align:right;margin-bottom:18px"><button class="reset-btn" onclick="resetAll()">Reset All to Nova Defaults</button></div>
+
+  <!-- ═══════════ DETAIL TABLES ═══════════ -->
+
+  <details>
+    <summary>CR Sensitivity — Deck Clearance Sweep</summary>
+    <div class="panel">
+      <table id="sensTable">
+        <thead><tr><th>Deck (in)</th><th>Static CR</th><th>Dynamic CR</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </details>
+
+  <details>
+    <summary>Torque / HP Data Table</summary>
+    <div class="panel">
+      <table id="dataTable">
+        <thead><tr><th>RPM</th><th>VE %</th><th>Torque</th><th>HP</th><th>BMEP</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </details>
+
+  <details id="compDetail" style="display:none">
+    <summary>Cam Comparison<span class="cam-tag cam-roller">Rollin' Thunder #2261</span><span class="cam-tag cam-flat">Performer RPM #7162</span></summary>
+    <div class="panel">
+      <table id="compTable">
+        <thead><tr><th>RPM</th><th>TQ (roller)</th><th>HP (roller)</th><th>TQ (flat)</th><th>HP (flat)</th><th>ΔTQ</th><th>ΔHP</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </details>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const val = id => parseFloat($(id).value) || 0;
+
+// ══════════ COMPRESSION RATIO ══════════
+
+function calcCompression(bore, stroke, cyl, chamber, dome, deck, gasketBore, gasketThick, rodLen, intDur050, intCL) {
+  const swept = (Math.PI / 4) * bore * bore * stroke;
+  const sweptCC = swept * 16.387064;
+  const deckCC = (Math.PI / 4) * bore * bore * deck * 16.387064;
+  const gasketCC = (Math.PI / 4) * gasketBore * gasketBore * gasketThick * 16.387064;
+  const clearance = chamber + gasketCC + deckCC - dome;
+  const cr = (sweptCC + clearance) / clearance;
+
+  // Dynamic CR — piston position at IVC
+  const ivcABDC = intCL + (intDur050 / 2) - 180;
+  const r = stroke / 2;
+  const l = rodLen;
+  const thetaRad = ivcABDC * Math.PI / 180;
+  const sinT = Math.sin(thetaRad);
+  const cosT = Math.cos(thetaRad);
+  const pistonFromBDC = r * (1 - cosT) + l * (1 - Math.sqrt(1 - (r / l) * (r / l) * sinT * sinT));
+  const lostStroke = pistonFromBDC;
+  const effStroke = stroke - lostStroke;
+  const effSwept = (Math.PI / 4) * bore * bore * effStroke;
+  const effSweptCC = effSwept * 16.387064;
+  const dcr = (effSweptCC + clearance) / clearance;
+
+  return { cr, dcr, clearance, sweptCC, gasketCC, deckCC, ivcABDC, effStroke, effSweptCC, lostStroke };
+}
+
+// ══════════ HEAD FLOW ══════════
+
+function getFlowData() {
+  const intakes = [], exhausts = [];
+  document.querySelectorAll('.flow-int').forEach(el => {
+    intakes.push({ lift: parseFloat(el.dataset.lift), cfm: parseFloat(el.value) || 0 });
+  });
+  document.querySelectorAll('.flow-exh').forEach(el => {
+    exhausts.push({ lift: parseFloat(el.dataset.lift), cfm: parseFloat(el.value) || 0 });
+  });
+  return { intakes, exhausts };
+}
+
+function interpolateFlow(table, lift) {
+  if (lift <= 0) return 0;
+  if (lift <= table[0].lift) return table[0].cfm * (lift / table[0].lift);
+  for (let i = 1; i < table.length; i++) {
+    if (lift <= table[i].lift) {
+      const t = (lift - table[i-1].lift) / (table[i].lift - table[i-1].lift);
+      return table[i-1].cfm + t * (table[i].cfm - table[i-1].cfm);
+    }
+  }
+  const last = table[table.length - 1], prev = table[table.length - 2];
+  return last.cfm + (last.cfm - prev.cfm) / (last.lift - prev.lift) * 0.3 * (lift - last.lift);
+}
+
+// ══════════ CAM LIFT PROFILE ══════════
+
+function camLiftProfile(theta, maxLift, durAdv, dur050) {
+  if (theta <= 0 || theta >= durAdv) return 0;
+  const theta050 = (durAdv - dur050) / 2;
+  const sinVal = Math.sin(Math.PI * theta050 / durAdv);
+  const n = Math.log(0.050 / maxLift) / Math.log(sinVal);
+  return maxLift * Math.pow(Math.max(Math.sin(Math.PI * theta / durAdv), 0), n);
+}
+
+function calcMeanIntakeFlow(maxLift, durAdv, dur050, flowTable) {
+  const steps = 72, dTheta = durAdv / steps;
+  let total = 0;
+  for (let i = 0; i < steps; i++) total += interpolateFlow(flowTable, camLiftProfile((i + 0.5) * dTheta, maxLift, durAdv, dur050));
+  return total / steps;
+}
+
+// ══════════ VOLUMETRIC EFFICIENCY ══════════
+
+function calcVE(rpm, cfg) {
+  const { cid, cidPerCyl, meanIntFlow, durAdv, intCL, lsa, manifold, exhaustType, carbCfm, camType, densityFactor } = cfg;
+  const dutyCycle = durAdv / 720;
+  const headCapacity = meanIntFlow * dutyCycle;
+  const demandPerCyl = (cidPerCyl * rpm) / 3456;
+  const headRatio = headCapacity / Math.max(demandPerCyl, 0.1);
+  const ve_head = headRatio > 1 ? 1.0 - 0.02 * (headRatio - 1) : Math.pow(headRatio, 0.7);
+
+  let rpmPeakRam, ramWidth, ramBoost;
+  if (manifold === 'single') { rpmPeakRam = 6000; ramWidth = 2000; ramBoost = 0.06; }
+  else if (manifold === 'dual_airgap') { rpmPeakRam = 4200; ramWidth = 2500; ramBoost = 0.08; }
+  else { rpmPeakRam = 3800; ramWidth = 2200; ramBoost = 0.06; }
+  const ramDelta = (rpm - rpmPeakRam) / ramWidth;
+  const ve_ram = 1.0 + ramBoost * Math.exp(-ramDelta * ramDelta);
+
+  const overlapDeg = Math.max(0, durAdv - 360);
+  const ve_reversion = 1.0 - Math.max(0, overlapDeg / 100) * Math.max(0, 1 - rpm / 2000);
+
+  let exhFactor = exhaustType === 'race' ? 0.0 : exhaustType === 'cutouts' ? 0.02 : 0.08;
+  const rpmMax = val('rpmMax') || 6500;
+  const ve_exhaust = 1.0 - exhFactor * Math.pow(rpm / rpmMax, 2);
+
+  const totalDemand = (cid * rpm) / 3456;
+  const carbRatio = totalDemand / carbCfm;
+  const ve_carb = carbRatio < 0.85 ? 1.0 : 1.0 - 0.3 * Math.pow((carbRatio - 0.85) / 0.15, 2);
+
+  const camBonus = camType === 'roller' ? 1.03 : camType === 'solid_roller' ? 1.05 : 1.0;
+
+  return Math.max(0.3, Math.min(1.05, ve_head * ve_ram * ve_reversion * ve_exhaust * ve_carb * camBonus * densityFactor));
+}
+
+// ══════════ TORQUE / HP ══════════
+
+function calcTorqueHP(rpm, ve, cfg) {
+  const K_imep = 200 + 3.5 * (cfg.cr - 9.0);
+  const fmep = 12 + 0.004 * rpm;
+  const bmep = Math.max(0, K_imep * ve - fmep);
+  const torque = bmep * cfg.cid / 150.8;
+  return { torque, hp: torque * rpm / 5252, bmep, ve };
+}
+
+function calcDensityFactor() {
+  const alt = val('altitude'), tempF = val('airTemp');
+  return Math.pow(1 - 6.8753e-6 * alt, 5.2559) / ((tempF + 459.67) / 518.67);
+}
+
+// ══════════ MAIN CALCULATE ══════════
+
+function calculate() {
+  const bore = val('bore'), stroke = val('stroke'), cyl = val('cylinders');
+  const chamber = val('chamber'), dome = val('dome'), deck = val('deck');
+  const gasketBore = val('gasketBore'), gasketThick = val('gasketThick');
+  const rodLen = val('rodLen');
+  const intDur050 = val('intDur050'), intDurAdv = val('intDurAdv');
+  const intLift = val('intLift'), intCL = val('intCL'), lsa = val('lsa');
+  const camType = $('camType').value;
+  const manifold = $('manifold').value;
+  const carbCfm = val('carbCfm'), exhaustType = $('exhaustType').value;
+  const rpmMin = val('rpmMin'), rpmMax = val('rpmMax');
+
+  // Displacement
+  const cid = (Math.PI / 4) * bore * bore * stroke * cyl;
+  const cidPerCyl = cid / cyl;
+  $('dispCi').textContent = cid.toFixed(1);
+  $('dDisp').textContent = cid.toFixed(0);
+
+  // Compression
+  const comp = calcCompression(bore, stroke, cyl, chamber, dome, deck, gasketBore, gasketThick, rodLen, intDur050, intCL);
+  $('dCr').textContent = comp.cr.toFixed(1);
+  $('dDcr').textContent = comp.dcr.toFixed(1) + ':1';
+  $('overlap').textContent = Math.max(0, intDurAdv - 360).toFixed(0);
+  $('ivc').textContent = comp.ivcABDC.toFixed(0);
+
+  // Density
+  const densityFactor = calcDensityFactor();
+  $('densityCorr').textContent = (densityFactor * 100).toFixed(1) + '%';
+
+  // Head flow
+  const flowData = getFlowData();
+  const meanIntFlow = calcMeanIntakeFlow(intLift, intDurAdv, intDur050, flowData.intakes);
+
+  const cfg = { cid, cidPerCyl, cr: comp.cr, meanIntFlow, durAdv: intDurAdv, dur050: intDur050,
+    maxLift: intLift, intCL, lsa, manifold, exhaustType, carbCfm, camType, densityFactor };
+
+  // Torque/HP sweep
+  const results = [];
+  let peakTq = 0, peakTqRpm = 0, peakHp = 0, peakHpRpm = 0, peakVe = 0;
+  for (let rpm = rpmMin; rpm <= rpmMax; rpm += 100) {
+    const ve = calcVE(rpm, cfg);
+    const r = calcTorqueHP(rpm, ve, cfg);
+    results.push({ rpm, ...r });
+    if (r.torque > peakTq) { peakTq = r.torque; peakTqRpm = rpm; peakVe = r.ve; }
+    if (r.hp > peakHp) { peakHp = r.hp; peakHpRpm = rpm; }
+  }
+
+  // Dashboard
+  $('dTq').textContent = Math.round(peakTq);
+  $('dTqAt').textContent = '@ ' + peakTqRpm + ' RPM';
+  $('dHp').textContent = Math.round(peakHp);
+  $('dHpAt').textContent = '@ ' + peakHpRpm + ' RPM';
+  $('dVe').textContent = (peakVe * 100).toFixed(1) + '%';
+
+  // Old cam
+  let oldResults = null;
+  if ($('showOldCam').checked) {
+    const oldMeanFlow = calcMeanIntakeFlow(0.560, 300, 240, flowData.intakes);
+    const oldCfg = { ...cfg, meanIntFlow: oldMeanFlow, durAdv: 300, dur050: 240, maxLift: 0.560, intCL: 110, camType: 'flat' };
+    oldResults = [];
+    for (let rpm = rpmMin; rpm <= rpmMax; rpm += 100) {
+      const ve = calcVE(rpm, oldCfg);
+      oldResults.push({ rpm, ...calcTorqueHP(rpm, ve, oldCfg) });
+    }
+    $('compDetail').style.display = '';
+  } else {
+    $('compDetail').style.display = 'none';
+  }
+
+  drawChart(results, oldResults);
+  fillDataTable(results, peakTqRpm, peakHpRpm);
+  fillSensitivity(bore, stroke, cyl, chamber, dome, gasketBore, gasketThick, rodLen, intDur050, intCL, deck);
+  if (oldResults) fillCompTable(results, oldResults);
+}
+
+// ══════════ CHART ══════════
+
+function drawChart(results, oldResults) {
+  const canvas = $('chartCanvas'), ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = { top: 20, right: 60, bottom: 40, left: 60 };
+  const plotW = W - pad.left - pad.right, plotH = H - pad.top - pad.bottom;
+  ctx.clearRect(0, 0, W, H);
+
+  const rpmMin = results[0].rpm, rpmMax = results[results.length - 1].rpm;
+  let maxTq = 0, maxHp = 0;
+  results.forEach(r => { maxTq = Math.max(maxTq, r.torque); maxHp = Math.max(maxHp, r.hp); });
+  if (oldResults) oldResults.forEach(r => { maxTq = Math.max(maxTq, r.torque); maxHp = Math.max(maxHp, r.hp); });
+  const tqS = Math.ceil(maxTq / 50) * 50 + 50, hpS = Math.ceil(maxHp / 50) * 50 + 50;
+
+  const xOf = rpm => pad.left + (rpm - rpmMin) / (rpmMax - rpmMin) * plotW;
+  const yTq = tq => pad.top + (1 - tq / tqS) * plotH;
+  const yHp = hp => pad.top + (1 - hp / hpS) * plotH;
+
+  // Grid
+  ctx.strokeStyle = '#1a3a5c'; ctx.lineWidth = 0.5;
+  for (let t = 0; t <= tqS; t += 100) { ctx.beginPath(); ctx.moveTo(pad.left, yTq(t)); ctx.lineTo(W - pad.right, yTq(t)); ctx.stroke(); }
+  for (let rpm = rpmMin; rpm <= rpmMax; rpm += 500) { ctx.beginPath(); ctx.moveTo(xOf(rpm), pad.top); ctx.lineTo(xOf(rpm), H - pad.bottom); ctx.stroke(); }
+
+  // Labels
+  ctx.fillStyle = '#888'; ctx.font = '11px -apple-system, sans-serif'; ctx.textAlign = 'center';
+  for (let rpm = rpmMin; rpm <= rpmMax; rpm += 1000) ctx.fillText(rpm, xOf(rpm), H - pad.bottom + 18);
+  ctx.fillText('RPM', pad.left + plotW / 2, H - 4);
+  ctx.textAlign = 'right';
+  for (let t = 0; t <= tqS; t += 100) { ctx.fillStyle = '#4fc3f7'; ctx.fillText(t, pad.left - 8, yTq(t) + 4); }
+  ctx.textAlign = 'left';
+  for (let h = 0; h <= hpS; h += 100) { ctx.fillStyle = '#ff7043'; ctx.fillText(h, W - pad.right + 8, yHp(h) + 4); }
+
+  // Old cam (dashed)
+  if (oldResults) {
+    ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#4fc3f788'; ctx.beginPath();
+    oldResults.forEach((r, i) => { i === 0 ? ctx.moveTo(xOf(r.rpm), yTq(r.torque)) : ctx.lineTo(xOf(r.rpm), yTq(r.torque)); }); ctx.stroke();
+    ctx.strokeStyle = '#ff704388'; ctx.beginPath();
+    oldResults.forEach((r, i) => { i === 0 ? ctx.moveTo(xOf(r.rpm), yHp(r.hp)) : ctx.lineTo(xOf(r.rpm), yHp(r.hp)); }); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Torque
+  ctx.lineWidth = 2.5; ctx.strokeStyle = '#4fc3f7'; ctx.beginPath();
+  results.forEach((r, i) => { i === 0 ? ctx.moveTo(xOf(r.rpm), yTq(r.torque)) : ctx.lineTo(xOf(r.rpm), yTq(r.torque)); }); ctx.stroke();
+
+  // HP
+  ctx.strokeStyle = '#ff7043'; ctx.beginPath();
+  results.forEach((r, i) => { i === 0 ? ctx.moveTo(xOf(r.rpm), yHp(r.hp)) : ctx.lineTo(xOf(r.rpm), yHp(r.hp)); }); ctx.stroke();
+
+  // VE (scaled to torque axis as percentage)
+  const veScale = tqS / 100;
+  ctx.strokeStyle = '#66bb6a88'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath();
+  results.forEach((r, i) => { const y = yTq(r.ve * 100 * veScale); i === 0 ? ctx.moveTo(xOf(r.rpm), y) : ctx.lineTo(xOf(r.rpm), y); }); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Peak markers
+  const ptq = results.reduce((a, b) => b.torque > a.torque ? b : a);
+  const php = results.reduce((a, b) => b.hp > a.hp ? b : a);
+  ctx.beginPath(); ctx.arc(xOf(ptq.rpm), yTq(ptq.torque), 5, 0, Math.PI * 2); ctx.fillStyle = '#4fc3f7'; ctx.fill();
+  ctx.beginPath(); ctx.arc(xOf(php.rpm), yHp(php.hp), 5, 0, Math.PI * 2); ctx.fillStyle = '#ff7043'; ctx.fill();
+}
+
+// ══════════ TABLES ══════════
+
+function fillDataTable(results, peakTqRpm, peakHpRpm) {
+  const tbody = $('dataTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  results.filter(r => r.rpm % 500 === 0).forEach(r => {
+    const tr = document.createElement('tr');
+    if (r.rpm === peakTqRpm) tr.className = 'hl';
+    else if (r.rpm === peakHpRpm) tr.className = 'hl-hp';
+    tr.innerHTML = `<td>${r.rpm}</td><td>${(r.ve*100).toFixed(1)}</td><td>${r.torque.toFixed(0)}</td><td>${r.hp.toFixed(0)}</td><td>${r.bmep.toFixed(1)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function fillSensitivity(bore, stroke, cyl, chamber, dome, gasketBore, gasketThick, rodLen, intDur050, intCL, currentDeck) {
+  const tbody = $('sensTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  for (let d = 0; d <= 0.030; d += 0.005) {
+    const dk = Math.round(d * 1000) / 1000;
+    const c = calcCompression(bore, stroke, cyl, chamber, dome, dk, gasketBore, gasketThick, rodLen, intDur050, intCL);
+    const tr = document.createElement('tr');
+    if (Math.abs(dk - currentDeck) < 0.001) tr.className = 'hl';
+    tr.innerHTML = `<td>${dk.toFixed(3)}"</td><td>${c.cr.toFixed(2)}:1</td><td>${c.dcr.toFixed(2)}:1</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function fillCompTable(newR, oldR) {
+  const tbody = $('compTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  newR.filter(r => r.rpm % 500 === 0).forEach(r => {
+    const o = oldR.find(x => x.rpm === r.rpm);
+    if (!o) return;
+    const dtq = r.torque - o.torque, dhp = r.hp - o.hp;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${r.rpm}</td><td>${r.torque.toFixed(0)}</td><td>${r.hp.toFixed(0)}</td><td>${o.torque.toFixed(0)}</td><td>${o.hp.toFixed(0)}</td><td style="color:${dtq>=0?'#66bb6a':'#ef5350'}">${dtq>=0?'+':''}${dtq.toFixed(0)}</td><td style="color:${dhp>=0?'#66bb6a':'#ef5350'}">${dhp>=0?'+':''}${dhp.toFixed(0)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ══════════ RESET ══════════
+
+function resetAll() {
+  const d = { bore:4.280, stroke:4.000, cylinders:8, rodLen:6.385, chamber:110, dome:26, deck:0.020,
+    gasketBore:4.370, gasketThick:0.039, intDur050:236, intDurAdv:335, intLift:0.625, intCL:109, lsa:112,
+    carbCfm:850, headerPri:1.875, altitude:0, airTemp:77, afr:12.8, rpmMin:1500, rpmMax:6500 };
+  Object.entries(d).forEach(([k,v]) => { if ($(k)) $(k).value = v; });
+  $('camType').value = 'roller'; $('manifold').value = 'dual_airgap'; $('exhaustType').value = 'muffled';
+  $('showOldCam').checked = false;
+  const intF = [74,143,207,250,284,309,315], exhF = [71,128,153,178,200,218,222];
+  document.querySelectorAll('.flow-int').forEach((el,i) => el.value = intF[i]);
+  document.querySelectorAll('.flow-exh').forEach((el,i) => el.value = exhF[i]);
+  calculate();
+}
+
+// ══════════ EVENTS ══════════
+
+document.querySelectorAll('input, select').forEach(el => { el.addEventListener('input', calculate); el.addEventListener('change', calculate); });
+window.addEventListener('resize', calculate);
+calculate();
+</script>
+</body>
+</html>
