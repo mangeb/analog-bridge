@@ -68,6 +68,16 @@
   tr.hl-hp td { color: #ff7043; font-weight: 600; }
   tr.hl-dcr td { color: #ffa726; font-weight: 600; }
 
+  /* AFR matrix */
+  .afr-matrix td { text-align: center; }
+  .afr-matrix td:first-child { text-align: left; color: #ccc; }
+  .afr-matrix th:first-child { text-align: left; }
+  .afr-matrix th { text-align: center; }
+  .afr-rich { color: #ff7043; font-weight: 600; }
+  .afr-lean { color: #66bb6a; font-weight: 600; }
+  .afr-notes { font-size: 0.75rem; color: #888; margin-top: 10px; line-height: 1.5; }
+  .afr-notes strong { color: #b0b0b0; }
+
   .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   .checkbox-row input[type="checkbox"] { width: auto; }
   .checkbox-row label { font-size: 0.85rem; color: #b0b0b0; flex: none; }
@@ -220,6 +230,32 @@
         <thead><tr><th>RPM</th><th>TQ (roller)</th><th>HP (roller)</th><th>TQ (flat)</th><th>HP (flat)</th><th>ΔTQ</th><th>ΔHP</th></tr></thead>
         <tbody></tbody>
       </table>
+    </div>
+  </details>
+
+  <details>
+    <summary>AFR Target Guide — NA 454 BBC, Pump Gas</summary>
+    <div class="panel">
+      <table class="afr-matrix">
+        <thead>
+          <tr><th>Condition</th><th>RPM Range</th><th>Load</th><th>Target AFR</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Cold Start</td><td>600–900</td><td>—</td><td class="afr-rich">11.5–12.5</td><td>Choke on, fast idle</td></tr>
+          <tr><td>Warm Idle</td><td>700–850</td><td>—</td><td>13.5–14.0</td><td>Stable idle, low emissions</td></tr>
+          <tr><td>Light Cruise</td><td>1500–2500</td><td>Low</td><td class="afr-lean">14.2–14.7</td><td>Steady-state, economy</td></tr>
+          <tr><td>Moderate Cruise</td><td>2000–3500</td><td>Med</td><td>13.5–14.0</td><td>Mild throttle, part load</td></tr>
+          <tr><td>Tip-In / Accel</td><td>Any</td><td>→High</td><td class="afr-rich">12.0–12.8</td><td>Accel pump enrichment</td></tr>
+          <tr><td>WOT — Low RPM</td><td>2000–3500</td><td>Full</td><td class="afr-rich">12.5–13.0</td><td>Below torque peak, safe margin</td></tr>
+          <tr><td>WOT — Mid RPM</td><td>3500–5000</td><td>Full</td><td class="afr-rich">12.5–12.8</td><td>Peak torque range, power sweet spot</td></tr>
+          <tr><td>WOT — High RPM</td><td>5000–6500</td><td>Full</td><td class="afr-rich">12.2–12.8</td><td>Above peak HP, watch for lean</td></tr>
+          <tr><td>Decel / Coast</td><td>Any</td><td>0</td><td class="afr-lean">14.7+</td><td>Closed throttle, fuel cut OK</td></tr>
+        </tbody>
+      </table>
+      <div class="afr-notes">
+        <strong>Quick reference:</strong> Stoich = 14.7 &nbsp;|&nbsp; Best power ≈ 12.5–12.8 &nbsp;|&nbsp; Rich limit ≈ 11.5 &nbsp;|&nbsp; Lean danger (WOT) &lt; 13.0+<br>
+        For this combo (10.6:1 CR, pump 91), keep WOT no leaner than 13.0 to avoid detonation. Richer is safer when in doubt.
+      </div>
     </div>
   </details>
 </div>
