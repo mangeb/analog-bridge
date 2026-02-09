@@ -66,13 +66,13 @@
 - **Source:** Edelbrock Top End Kit #2095
 
 ## Carburetor
-- **Carburetor:** Holley 850 CFM Vacuum Secondary (HLY-0-80531), Model 4150, 1.6875" throttle bore, square bore flange, electric choke, dual feed, gold dichromate
-- **Primary Main Jets:** 78
-- **Secondary Main Jets:** 84
-- **Power Valve:** 4.5 inHg
-- **Accelerator Pump Squirter:** 0.042" (HLY-121-42)
+- **Carburetor:** Holley 850 CFM Vacuum Secondary (HLY-0-80531), Model 4150, 1.6875" throttle bore, ~1.562" primary venturi, square bore flange (5-3/16" x 5-5/8"), electric choke, dual feed, downleg boosters, 0.110" Viton needle & seat, gold dichromate, 50-state emissions legal (1965-69 V8), factory calibrated for GM 502
+- **Factory Jetting (reference):** 78 pri / 82 sec, PV 4.5 pri / 3.5 sec, squirter .040"
+- **Current Jetting:** 78 pri / 84 sec (rejetted +2 sec)
+- **Power Valve:** 4.5 inHg primary, 3.5 inHg secondary (factory)
+- **Accelerator Pump Squirter:** 0.042" (HLY-121-42, up from factory .040")
 - **Accelerator Pump Cam:** Pink cam, hole #1 (aggressive) (HLY-20-12)
-- **Secondary Diaphragm Spring:** Pink (light/medium)
+- **Secondary Diaphragm Spring:** Pink (light/medium, factory)
 - **Secondary Tuning Kit:** AED 5585 vacuum secondary quick-change kit
 - **Jet Assortment:** Holley 36-181
 - **Power Valves on Hand:** HLY-125-65, HLY-125-85
