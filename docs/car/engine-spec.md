@@ -6,10 +6,10 @@
 - **Bore x Stroke:** 4.280" x 4.000"
 - **Compression Ratio:** 10.6:1 (110cc chamber, 26cc dome, .020" deck, .039" gasket)
 - **Pistons:** SRP 212142, forged 4032 alloy, 4.280" bore, 1.395" compression height, 26cc dome, 0.990" wrist pin (5115 steel, 2.930" long, ~150g), rings 1/16-1/16-3/16, ~588g, CNC dome with radiused valve reliefs, fits Edelbrock open-chamber heads
-- **Rings:** Sportsman JEP-S100S8-42805
+- **Rings:** JE Pro Seal Sportsman JEP-S100S8-42805, 4.280" bore, 1/16-1/16-3/16, file-fit, plasma moly top (ductile iron), phosphate 2nd (iron), chrome oil (carbon steel), 8-cyl set
 - **Connecting Rods:** Eagle ESP-63853D, 4340 forged H-beam, 6.385" center-to-center, 2.200" journal, 0.990" pin, ARP 8740 bolts, ~785g
-- **Main Bearings:** Clevite MS829H10
-- **Rod Bearings:** Clevite CB743HN10
+- **Main Bearings:** Clevite MS829H10, H-Series tri-metal (babbitt/copper-lead/steel), .010" undersize, 1/2 groove, 12,000 PSI load capacity, narrowed for aftermarket crank fillets, set of 5
+- **Rod Bearings:** Clevite CB743HN10, H-Series tri-metal, .010" undersize, 2.200" journal, 12,000 PSI load, enlarged chamfers, narrowed for aftermarket cranks
 - **Main Studs:** ARP 135-5402
 - **Harmonic Balancer Bolt:** MRG-946G
 - **Engine Bolt Kit:** ARP 535-9601
@@ -66,7 +66,7 @@
 - **Source:** Edelbrock Top End Kit #2095
 
 ## Carburetor
-- **Carburetor:** Holley 850 CFM Vacuum Secondary (HLY-0-80531)
+- **Carburetor:** Holley 850 CFM Vacuum Secondary (HLY-0-80531), Model 4150, 1.6875" throttle bore, square bore flange, electric choke, dual feed, gold dichromate
 - **Primary Main Jets:** 78
 - **Secondary Main Jets:** 84
 - **Power Valve:** 4.5 inHg
@@ -86,7 +86,7 @@
   - Tapped PVCRs for adjustable inserts (current: 0.063")
 
 ## Ignition
-- **Distributor:** MSD #8361
+- **Distributor:** MSD #8361 Pro-Billet Street, CNC billet aluminum, magnetic pickup, QPQ-coated shaft, sealed ball bearing, adjustable mechanical advance (blue 21° bushing installed), vacuum advance canister (up to 10° at 15 inHg), CARB EO #D-40-39
 - **Ignition Box:** MSD 6AL #6420
 - **Coil:** MSD Blaster #8202
 - **Wires:** MSD #31189 (with MSD terminals/boots #8849)
@@ -99,9 +99,7 @@
 - **Total Advance (Cruise):** 50°
 
 ## Exhaust
-- **Headers:** Doug's D328, 4-1 one-piece, ceramic coated
-  - Primary: 1-7/8"
-  - Collector: 3.5"
+- **Headers:** Doug's D328, full-length 4-1 one-piece, 1-7/8" primary (16 ga), 3.5" collector, 3/8" machined flanges, metallic ceramic coating (1400°F rated), CNC mandrel bent, 41 lbs, fits '68-79 Nova BBC
 - **Exhaust Cutouts:** Electric, 2.5" (SUM-670136 x2) + 3" (SUM-670150)
 - **Cutout Wiring:** SUM-670152
 - **Gaskets:** Ultra-Seal BBC (MRG-5910), Edelbrock #7205
@@ -130,7 +128,7 @@
 ## Transmission
 - **Transmission:** Tremec TKO 600 Street
 - **Fifth Gear:** 0.64 overdrive
-- **Clutch:** Ram Powergrip 11" (#98764)
+- **Clutch:** Ram Powergrip #98764, 11" disc, 1-1/8" x 26 spline, organic/metallic combo, diaphragm, sprung hub, 550 HP capacity, throwout bearing included
 - **Throwout Bearing:** Centerforce
 - **Clutch Fork:** SUM-700104
 - **Pivot Ball:** SUM-700110 (adjustable)
