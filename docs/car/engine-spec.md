@@ -111,6 +111,8 @@
 
 ## Exhaust
 - **Headers:** Doug's D328, full-length 4-1 one-piece, 1-7/8" primary (16 ga), 3.5" collector, 3/8" machined flanges, metallic ceramic coating (1400°F rated), CNC mandrel bent, 41 lbs, fits '68-79 Nova BBC
+- **Exhaust Pipe:** 2.5" with H-pipe crossover
+- **Mufflers:** Dual turbo-style
 - **Exhaust Cutouts:** Electric, 2.5" (SUM-670136 x2) + 3" (SUM-670150)
 - **Cutout Wiring:** SUM-670152
 - **Gaskets:** Ultra-Seal BBC (MRG-5910), Edelbrock #7205
@@ -155,8 +157,9 @@
 - **U-Joints:** 353
 
 ## Wheels & Tires
-- **Tires:** 235/70R15
+- **Tires:** 235/70R15 (710 mm overall diameter, 2.23 m circumference)
 - **VSS Reluctor Teeth:** 17
+- **VSS Calibration:** 12.71 Hz/MPH (1271 Hz @ 100 MPH), 45,756 pulses/mile
 - _TODO: wheel brand/size_
 
 ## Tuning Targets

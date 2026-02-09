@@ -92,7 +92,7 @@ struct SensorData {
   float imuTemp;
   // ISP2 / Engine
   float afr, afr1;
-  float rpm, map, oilp, coolant;
+  float vss, map, oilp, coolant;  // vss = vehicle speed (MPH) from VSS reluctor
 };
 static SensorData data = {};
 
@@ -133,8 +133,18 @@ static int       isp2BytesExpected = 0;
 #define AUX_OILP_PSI(v)    (((v) - 0.5) * 25.0)
 // TODO: Verify MAP sensor model — assumes 1-bar (0-5V = -14.7 to +14.7)
 #define AUX_MAP_INHG(v)    ((v) * 5.858 - 14.696)
-// TODO: Determine SSI-4 RPM input config (frequency? voltage?) and set scaling
-#define AUX_RPM(v)         ((v) * 2000.0)
+
+// VSS (Vehicle Speed Sensor) calibration
+// Derived from: 235/70R15 tire, 3.73 final drive, 17-tooth reluctor
+//   Wheel circumference: 2.23 m (710 mm dia)
+//   Driveshaft revs/h @ 100 mph: 269,153
+//   VSS frequency @ 100 mph: 269,153 × 17 / 3600 = 1271 Hz
+//   Conversion factor: 12.71 Hz per MPH
+// SSI-4 frequency mode: 0-5V maps linearly to 0..SSI4_VSS_FREQ_MAX Hz
+// Adjust SSI4_VSS_FREQ_MAX to match your LM Programmer frequency range setting
+#define SSI4_VSS_FREQ_MAX  1500.0   // Hz — SSI-4 configured max (adjust to match)
+#define VSS_HZ_PER_MPH     12.71    // Hz per MPH for this drivetrain
+#define AUX_VSS_MPH(v)     (((v) / 5.0 * SSI4_VSS_FREQ_MAX) / VSS_HZ_PER_MPH)
 
 // UI
 const int buttonPin = 2;
@@ -366,7 +376,7 @@ static void readmpu9250() {
 //   SSI-4#1: aux0=coolant, aux1=oilp
 //   LC-1#1:  AFR bank 1
 //   LC-1#2:  AFR bank 2
-//   SSI-4#2: aux2=MAP, aux3=RPM
+//   SSI-4#2: aux2=MAP, aux3=VSS (vehicle speed, frequency mode)
 static void processISP2Data() {
   uint8_t auxIdx = 0;
   uint8_t lc1Idx = 0;
@@ -418,7 +428,7 @@ static void processISP2Data() {
   if (auxIdx >= 1) data.coolant = AUX_COOLANT_F(auxV[0]);
   if (auxIdx >= 2) data.oilp    = AUX_OILP_PSI(auxV[1]);
   if (auxIdx >= 3) data.map     = AUX_MAP_INHG(auxV[2]);
-  if (auxIdx >= 4) data.rpm     = AUX_RPM(auxV[3]);
+  if (auxIdx >= 4) data.vss     = AUX_VSS_MPH(auxV[3]);
 
   // Map LC-1 devices to AFR
   if (lc1Idx >= 1) data.afr  = afrVal[0];
@@ -430,8 +440,8 @@ static void processISP2Data() {
   DEBUG_PORT.print(auxIdx); DEBUG_PORT.print(F("xAUX | "));
   DEBUG_PORT.print(F("AFR=")); DEBUG_PORT.print(data.afr, 1);
   DEBUG_PORT.print(F(" AFR1=")); DEBUG_PORT.print(data.afr1, 1);
-  DEBUG_PORT.print(F(" RPM=")); DEBUG_PORT.print(data.rpm, 0);
-  DEBUG_PORT.print(F(" MAP=")); DEBUG_PORT.print(data.map, 1);
+  DEBUG_PORT.print(F(" VSS=")); DEBUG_PORT.print(data.vss, 1);
+  DEBUG_PORT.print(F("mph MAP=")); DEBUG_PORT.print(data.map, 1);
   DEBUG_PORT.print(F(" OIL=")); DEBUG_PORT.print(data.oilp, 0);
   DEBUG_PORT.print(F(" CLT=")); DEBUG_PORT.println(data.coolant, 0);
 #endif
@@ -530,8 +540,8 @@ static void openLogFile() {
   logFile = SD.open(fname, FILE_WRITE);
   if (logFile) {
     logFile.println(datebuf);
-    logFile.println(F("time,lat,lon,speed,alt,dir,sats,accx,accy,accz,rotx,roty,rotz,magx,magy,magz,imuTemp,afr,afr1,rpm,map,oilp,coolant,gpsStale"));
-    logFile.println(F("(s),(deg),(deg),(mph),(ft),(deg),(#),(g),(g),(g),(dps),(dps),(dps),(uT),(uT),(uT),(C),(afr),(afr),(rpm),(inHgVac),(psig),(F),(flag)"));
+    logFile.println(F("time,lat,lon,speed,alt,dir,sats,accx,accy,accz,rotx,roty,rotz,magx,magy,magz,imuTemp,afr,afr1,vss,map,oilp,coolant,gpsStale"));
+    logFile.println(F("(s),(deg),(deg),(mph),(ft),(deg),(#),(g),(g),(g),(dps),(dps),(dps),(uT),(uT),(uT),(C),(afr),(afr),(mph),(inHgVac),(psig),(F),(flag)"));
     logFile.flush();
     lastFlush = millis();
   }
@@ -558,7 +568,7 @@ static void printRow(Print &out, float now) {
   out.print(data.imuTemp, 1); out.print(',');
   out.print(data.afr);        out.print(',');
   out.print(data.afr1);       out.print(',');
-  out.print(data.rpm);        out.print(',');
+  out.print(data.vss);        out.print(',');
   out.print(data.map);        out.print(',');
   out.print(data.oilp);       out.print(',');
   out.print(data.coolant);    out.print(',');
@@ -595,11 +605,11 @@ static void printLiveDebug(float now) {
   dtostrf(data.afr1, 4, 1, buf);
   DEBUG_PORT.print(buf);
 
-  // RPM and MAP
+  // VSS and MAP
   DEBUG_PORT.print(F("  "));
-  dtostrf(data.rpm, 5, 0, buf);
+  dtostrf(data.vss, 5, 1, buf);
   DEBUG_PORT.print(buf);
-  DEBUG_PORT.print(F("rpm "));
+  DEBUG_PORT.print(F("mph "));
   dtostrf(data.map, 5, 1, buf);
   DEBUG_PORT.print(buf);
   DEBUG_PORT.print(F("\"Hg"));
@@ -734,7 +744,7 @@ void handleSerial() {
         DEBUG_PORT.print(F("ENG: AFR="));
         DEBUG_PORT.print(data.afr, 1); DEBUG_PORT.print('/');
         DEBUG_PORT.print(data.afr1, 1);
-        DEBUG_PORT.print(F("  RPM=")); DEBUG_PORT.print(data.rpm, 0);
+        DEBUG_PORT.print(F("  VSS=")); DEBUG_PORT.print(data.vss, 1); DEBUG_PORT.print(F("mph"));
         DEBUG_PORT.print(F("  MAP=")); DEBUG_PORT.print(data.map, 1);
         DEBUG_PORT.print(F("  OIL=")); DEBUG_PORT.print(data.oilp, 0);
         DEBUG_PORT.print(F("  CLT=")); DEBUG_PORT.println(data.coolant, 0);
@@ -769,7 +779,7 @@ void handleSerial() {
         DEBUG_PORT.println(isp2AuxCount);
         DEBUG_PORT.print(F("AFR: ")); DEBUG_PORT.print(data.afr, 1);
         DEBUG_PORT.print(F(" AFR1: ")); DEBUG_PORT.println(data.afr1, 1);
-        DEBUG_PORT.print(F("RPM: ")); DEBUG_PORT.print(data.rpm, 0);
+        DEBUG_PORT.print(F("VSS: ")); DEBUG_PORT.print(data.vss, 1); DEBUG_PORT.print(F("mph"));
         DEBUG_PORT.print(F(" MAP: ")); DEBUG_PORT.print(data.map, 1);
         DEBUG_PORT.print(F(" OIL: ")); DEBUG_PORT.print(data.oilp, 0);
         DEBUG_PORT.print(F(" CLT: ")); DEBUG_PORT.println(data.coolant, 0);
