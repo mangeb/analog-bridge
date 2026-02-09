@@ -51,9 +51,9 @@
     <section class="grid grid-cols-2 gap-3">
       <div class="gauge-card">
         <div class="gauge-label">Speed</div>
-        <div id="vss-val" class="gauge-value text-3xl">--</div>
-        <div class="gauge-unit">mph (VSS)</div>
-        <div class="text-xs text-slate-600 font-mono mt-1">GPS: <span id="gps-spd-val">--</span> mph</div>
+        <div id="gps-spd-val" class="gauge-value text-3xl">--</div>
+        <div class="gauge-unit">mph (GPS)</div>
+        <div class="text-xs text-slate-600 font-mono mt-1">VSS: <span id="vss-val">--</span> mph</div>
       </div>
       <div class="gauge-card">
         <div class="gauge-label">MAP</div>
@@ -112,16 +112,19 @@
           <div class="cmd-group-label">Recording</div>
           <div class="grid grid-cols-3 gap-2">
             <button class="cmd-btn" data-cmd="r">
-              <span class="cmd-key">r</span>
+              <span class="cmd-icon">&#9210;</span>
               <span class="cmd-desc">Start</span>
+              <span class="cmd-key">r</span>
             </button>
             <button class="cmd-btn" data-cmd="s">
-              <span class="cmd-key">s</span>
+              <span class="cmd-icon">&#9209;</span>
               <span class="cmd-desc">Stop</span>
+              <span class="cmd-key">s</span>
             </button>
             <button class="cmd-btn" data-cmd="k">
-              <span class="cmd-key">k</span>
+              <span class="cmd-icon">&#9873;</span>
               <span class="cmd-desc">Keyframe</span>
+              <span class="cmd-key">k</span>
             </button>
           </div>
         </div>
@@ -130,20 +133,24 @@
           <div class="cmd-group-label">Display</div>
           <div class="grid grid-cols-2 gap-2">
             <button class="cmd-btn" data-cmd="d">
-              <span class="cmd-key">d</span>
+              <span class="cmd-icon">&#9881;</span>
               <span class="cmd-desc">Debug stream</span>
+              <span class="cmd-key">d</span>
             </button>
             <button class="cmd-btn" data-cmd="p">
-              <span class="cmd-key">p</span>
+              <span class="cmd-icon">&#128247;</span>
               <span class="cmd-desc">Snapshot</span>
+              <span class="cmd-key">p</span>
             </button>
             <button class="cmd-btn" data-cmd="v">
-              <span class="cmd-key">v</span>
+              <span class="cmd-icon">&#9432;</span>
               <span class="cmd-desc">System status</span>
+              <span class="cmd-key">v</span>
             </button>
             <button class="cmd-btn" data-cmd="i">
-              <span class="cmd-key">i</span>
+              <span class="cmd-icon">&#9041;</span>
               <span class="cmd-desc">ISP2 diag</span>
+              <span class="cmd-key">i</span>
             </button>
           </div>
         </div>
@@ -152,20 +159,24 @@
           <div class="cmd-group-label">IMU Calibration</div>
           <div class="grid grid-cols-2 gap-2">
             <button class="cmd-btn" data-cmd="c">
-              <span class="cmd-key">c</span>
+              <span class="cmd-icon">&#8982;</span>
               <span class="cmd-desc">Accel cal</span>
+              <span class="cmd-key">c</span>
             </button>
             <button class="cmd-btn" data-cmd="m">
-              <span class="cmd-key">m</span>
+              <span class="cmd-icon">&#129517;</span>
               <span class="cmd-desc">Mag cal</span>
+              <span class="cmd-key">m</span>
             </button>
             <button class="cmd-btn" data-cmd="C">
-              <span class="cmd-key">C</span>
+              <span class="cmd-icon">&#128200;</span>
               <span class="cmd-desc">Show cal</span>
+              <span class="cmd-key">C</span>
             </button>
             <button class="cmd-btn" data-cmd="E">
-              <span class="cmd-key">E</span>
+              <span class="cmd-icon">&#128465;</span>
               <span class="cmd-desc">Erase cal</span>
+              <span class="cmd-key">E</span>
             </button>
           </div>
         </div>
@@ -174,12 +185,14 @@
           <div class="cmd-group-label">GPS / WiFi</div>
           <div class="grid grid-cols-2 gap-2">
             <button class="cmd-btn" data-cmd="g">
-              <span class="cmd-key">g</span>
+              <span class="cmd-icon">&#128752;</span>
               <span class="cmd-desc">GPS reconfig</span>
+              <span class="cmd-key">g</span>
             </button>
             <button class="cmd-btn" data-cmd="w">
-              <span class="cmd-key">w</span>
+              <span class="cmd-icon">&#128246;</span>
               <span class="cmd-desc">WiFi status</span>
+              <span class="cmd-key">w</span>
             </button>
           </div>
         </div>

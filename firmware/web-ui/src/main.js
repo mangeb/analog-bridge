@@ -139,9 +139,9 @@ function update(d) {
   el.clt.className = 'gauge-value' + (cltAlarm ? ' warn-clt' : '');
   el.cltCard.classList.toggle('alarm-active', cltAlarm);
 
-  // Speed
-  el.vss.textContent = d.eng.vss > 0 ? d.eng.vss.toFixed(0) : '0';
+  // Speed — GPS is primary (big), VSS is secondary (small)
   el.gpsSpd.textContent = d.gps.spd > 0 ? d.gps.spd.toFixed(0) : '0';
+  el.vss.textContent = d.eng.vss > 0 ? d.eng.vss.toFixed(0) : '0';
   el.map.textContent = d.eng.map !== undefined ? d.eng.map.toFixed(1) : '--';
 
   // GPS

@@ -54,9 +54,14 @@ const waypoints = [
 ];
 
 // ── Scenario segments ─────────────────────────────────────────────────
-// Identical to tools/log-analyzer.html loadSyntheticData() scenarios
+// Extended from tools/log-analyzer.html loadSyntheticData() scenarios
+// Added engine-off cold start (5s) and coolant temp spike (at ~10s)
 const scenarios = [
-  // Potrero Hill — idle at top
+  // Engine OFF — key on, no RPM, no oil pressure, cold coolant
+  { dur: 5, spd: 0, map: 0, afr: 0, accx: 0, accy: 0, wp: [0,0], engineOff: true },
+  // Engine just started — idle, oil building, coolant spike at ~10s mark
+  { dur: 3, spd: 0, map: 20, afr: 13.8, accx: 0, accy: 0, wp: [0,0], tempSpike: true },
+  // Potrero Hill — idle at top, temps settling
   { dur: 6, spd: 0, map: 20, afr: 13.8, accx: 0, accy: 0, wp: [0,0], kf: true },
   // Pull out, gentle accel down Wisconsin
   { dur: 4, spd: [0, 25], map: [20, 10], afr: 12.8, accx: [0.1, 0.2], accy: 0, wp: [0,1] },
@@ -133,6 +138,30 @@ function generate() {
         vss = s + Math.sign(sc.slip) * slipPeak * slipFrac + rnd(-1, 1);
       }
 
+      // Engine-off scenario: zero AFR, zero oil, cold coolant
+      let rowAfr, rowAfr1, rowOilp, rowCoolant, rowMap;
+      if (sc.engineOff) {
+        rowAfr = 0;
+        rowAfr1 = 0;
+        rowOilp = 0;
+        rowCoolant = 120 + rnd(0, 3);  // ambient-ish, engine cold
+        rowMap = 0;
+      } else if (sc.tempSpike) {
+        // Just started — oil building up, coolant spikes then settles
+        const spikeFrac = Math.sin(frac * Math.PI); // peaks mid-segment
+        rowAfr = afrBase + rnd(-0.1, 0.1);
+        rowAfr1 = afrBase + 0.15 + rnd(-0.1, 0.1);
+        rowOilp = lerp(3, 45, frac) + rnd(-2, 2);   // oil building from low
+        rowCoolant = 160 + spikeFrac * 65 + rnd(0, 3); // spikes to ~225 F
+        rowMap = Math.max(0, m);
+      } else {
+        rowAfr = afrBase + rnd(-0.1, 0.1);
+        rowAfr1 = afrBase + 0.15 + rnd(-0.1, 0.1);
+        rowOilp = 55 + s * 0.08 + rnd(-2, 2);
+        rowCoolant = 185 + rnd(0, 5);
+        rowMap = Math.max(0, m);
+      }
+
       rows.push({
         time: t,
         lat,
@@ -151,12 +180,12 @@ function generate() {
         magy: -10 + rnd(0, 3),
         magz: 40 + rnd(0, 5),
         imuTemp: 28 + rnd(0, 2),
-        afr: afrBase + rnd(-0.1, 0.1),
-        afr1: afrBase + 0.15 + rnd(-0.1, 0.1),
+        afr: rowAfr,
+        afr1: rowAfr1,
         vss: Math.max(0, vss),
-        map: Math.max(0, m),
-        oilp: 55 + s * 0.08 + rnd(-2, 2),
-        coolant: 185 + rnd(0, 5),
+        map: rowMap,
+        oilp: rowOilp,
+        coolant: rowCoolant,
         gpsStale: 0,
         keyframe: (i === kfAt) ? kfNum : 0,
       });

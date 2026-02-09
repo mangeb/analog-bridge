@@ -67,10 +67,14 @@
          transition-colors cursor-pointer;
 }
 
-.cmd-key {
-  @apply text-sm font-mono font-bold text-sky-400;
+.cmd-icon {
+  @apply text-lg leading-none;
 }
 
 .cmd-desc {
-  @apply text-[10px] text-slate-500 leading-tight;
+  @apply text-[10px] text-slate-400 leading-tight;
+}
+
+.cmd-key {
+  @apply text-[9px] font-mono text-slate-600;
 }
