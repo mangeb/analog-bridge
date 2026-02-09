@@ -139,8 +139,11 @@
 - _TODO: oil pan brand, oil pump specs_
 
 ## Transmission
-- **Transmission:** Tremec TKO 600 Street
-- **Fifth Gear:** 0.64 overdrive
+- **Transmission:** Tremec TKO 600 5-Speed Manual
+- **Gear Ratios:** 1st: 2.87 | 2nd: 1.89 | 3rd: 1.28 | 4th: 1.00 | 5th: 0.64 (overdrive)
+- **Input Shaft:** 26 spline
+- **Output Shaft:** 31 spline
+- **Torque Capacity:** 600 lb-ft
 - **Clutch:** Ram Powergrip #98764, 11" disc, 1-1/8" x 26 spline, organic/metallic combo, diaphragm, sprung hub, 550 HP capacity, throwout bearing included
 - **Throwout Bearing:** Centerforce
 - **Clutch Fork:** SUM-700104
@@ -149,9 +152,10 @@
 - **Starter:** CVR Protorque 5323OS (with ARP starter bolts 430-3507)
 
 ## Rear End
+- **Housing:** GM 10-bolt
 - **Gear Ratio:** 3.73
-- **Posi:** Eaton
-- **Axles:** 30-spline
+- **Posi:** Eaton limited slip differential
+- **Axles:** 32-spline
 - **Yoke:** 1350
 - **Driveshaft:** Custom
 - **U-Joints:** 353

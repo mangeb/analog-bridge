@@ -976,20 +976,23 @@ function afrToColor(afr) {
 }
 
 // ══════════ RPM ESTIMATION ══════════
-// TH400 3-speed auto: 1st=2.48, 2nd=1.48, 3rd=1.00, final=3.73
+// Tremec TKO 600 5-speed: 1st=2.87, 2nd=1.89, 3rd=1.28, 4th=1.00, 5th=0.64(OD)
+// Rear: GM 10-bolt, 3.73 final, Eaton limited slip, 32-spline axles
 // Tire: 235/70R15, circumference=2.23m=7.316ft
-const GEARS = [2.48, 1.48, 1.00];
+const GEARS = [2.87, 1.89, 1.28, 1.00, 0.64];
 const FINAL_DRIVE = 3.73;
 const TIRE_CIRC_FT = 7.316;
 
 function estimateRPM(speedMph) {
   if (speedMph < 2) return 700; // idle
   const fpm = speedMph * 88; // feet per minute
-  // Auto-detect gear from speed
+  // Auto-detect gear from speed (shift points ~5000 RPM)
   let gear;
-  if (speedMph < 18) gear = GEARS[0];      // 1st
-  else if (speedMph < 40) gear = GEARS[1];  // 2nd
-  else gear = GEARS[2];                      // 3rd
+  if (speedMph < 35) gear = GEARS[0];       // 1st
+  else if (speedMph < 55) gear = GEARS[1];  // 2nd
+  else if (speedMph < 80) gear = GEARS[2];  // 3rd
+  else if (speedMph < 95) gear = GEARS[3];  // 4th
+  else gear = GEARS[4];                      // 5th (OD)
   return (fpm * FINAL_DRIVE * gear) / TIRE_CIRC_FT;
 }
 
