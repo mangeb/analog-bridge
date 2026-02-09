@@ -254,7 +254,7 @@ td:first-child { text-align: left; color: #aaa; }
 // ══════════ GLOBALS ══════════
 let rows = [], smoothedRows = [], filename = '';
 let playIdx = 0, playing = false, playSpeed = 1, playTimer = null;
-let chart = null, leafletMap = null, routeLayer = null, playMarker = null;
+let chart = null, leafletMap = null, routeLayer = null, condUnderlayLayer = null, keyframeMapLayer = null, playMarker = null;
 const SAMPLE_MS = 80;
 
 // ══════════ CONDITION DEFINITIONS ══════════
@@ -661,6 +661,7 @@ function initMap() {
   playMarker = L.circleMarker([gpsRows[0].lat, gpsRows[0].lon], { radius: 7, color: '#fff', fillColor: '#4fc3f7', fillOpacity: 1, weight: 2 }).addTo(leafletMap);
 
   updateMapRoute();
+  addKeyframeMarkers();
 
   // Fit bounds
   const bounds = L.latLngBounds(gpsRows.map(r => [r.lat, r.lon]));
@@ -669,20 +670,62 @@ function initMap() {
 
 function updateMapRoute() {
   if (!leafletMap) return;
+  if (condUnderlayLayer) leafletMap.removeLayer(condUnderlayLayer);
   if (routeLayer) leafletMap.removeLayer(routeLayer);
 
   const metric = document.getElementById('mapMetric').value;
   const gpsRows = rows.filter(r => r.lat !== 0 && r.lon !== 0 && !r.gpsStale);
   if (gpsRows.length < 2) return;
 
-  routeLayer = L.layerGroup();
+  // Condition underlay — wider line underneath showing condition color with alternating brightness
+  condUnderlayLayer = L.layerGroup();
+  let prevCond = null, segStart = 0, condIdx = 0;
+  for (let i = 1; i <= gpsRows.length; i++) {
+    const cond = i < gpsRows.length ? gpsRows[i].condition : null;
+    if (cond !== prevCond || i === gpsRows.length) {
+      if (prevCond !== null && i - segStart > 1) {
+        const pts = [];
+        for (let j = segStart; j < i; j++) pts.push([gpsRows[j].lat, gpsRows[j].lon]);
+        const condColor = CONDITIONS[prevCond]?.color || '#444';
+        // Alternate brightness: even segments get base color, odd get lighter tint
+        const opacity = condIdx % 2 === 0 ? 0.5 : 0.35;
+        L.polyline(pts, { color: condColor, weight: 9, opacity, lineCap: 'round', lineJoin: 'round' }).addTo(condUnderlayLayer);
+        condIdx++;
+      }
+      prevCond = cond;
+      segStart = i;
+    }
+  }
+  condUnderlayLayer.addTo(leafletMap);
 
+  // Metric-colored route on top (thinner)
+  routeLayer = L.layerGroup();
   for (let i = 1; i < gpsRows.length; i++) {
     const r = gpsRows[i];
     const color = metricColor(r, metric);
-    L.polyline([[gpsRows[i-1].lat, gpsRows[i-1].lon], [r.lat, r.lon]], { color, weight: 3, opacity: 0.8 }).addTo(routeLayer);
+    L.polyline([[gpsRows[i-1].lat, gpsRows[i-1].lon], [r.lat, r.lon]], { color, weight: 3, opacity: 0.9 }).addTo(routeLayer);
   }
   routeLayer.addTo(leafletMap);
+}
+
+function addKeyframeMarkers() {
+  if (!leafletMap) return;
+  if (keyframeMapLayer) leafletMap.removeLayer(keyframeMapLayer);
+  keyframeMapLayer = L.layerGroup();
+
+  const kfRows = rows.filter(r => r.keyframe > 0 && r.lat !== 0 && r.lon !== 0 && !r.gpsStale);
+  kfRows.forEach(r => {
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="background:#ffd54f;color:#1a1a2e;font-weight:700;font-size:11px;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #1a1a2e;box-shadow:0 1px 4px rgba(0,0,0,0.6)">#${r.keyframe}</div>`,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+    const marker = L.marker([r.lat, r.lon], { icon }).addTo(keyframeMapLayer);
+    marker.bindTooltip(`KF #${r.keyframe} @ ${fmtTime(r.time)}`, { direction: 'top', offset: [0, -14] });
+    marker.on('click', () => { playIdx = r.idx; updatePlaybackUI(); });
+  });
+  keyframeMapLayer.addTo(leafletMap);
 }
 
 function metricColor(r, metric) {
@@ -825,7 +868,13 @@ function drawHeatmap() {
           ctx.fillStyle = '#000';
           ctx.font = `bold ${cw > 48 ? 11 : 9}px sans-serif`;
           ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          ctx.fillText(avg.toFixed(1), x + cw/2, y + ch/2);
+          ctx.fillText(avg.toFixed(1), x + cw/2, y + ch/2 - (ch > 24 ? 4 : 0));
+          // Sample count below AFR value
+          if (ch > 24) {
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.font = `${cw > 48 ? 8 : 7}px sans-serif`;
+            ctx.fillText('n=' + d.count, x + cw/2, y + ch/2 + 8);
+          }
         }
       }
     }
