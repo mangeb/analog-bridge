@@ -14,7 +14,8 @@
 
 ### Secondary Operation
 - Paperclip test indicates secondaries are not opening under street loads
-- Pink (light/medium) spring currently installed
+- Pink (light/medium) spring currently installed (factory stock for 80531)
+- Factory secondary power valve: 3.5 inHg (in secondary metering block)
 
 ## Action Plan
 
@@ -23,6 +24,7 @@
 3. **Secondary spring swap** — Move to white (lightest) spring to force secondary engagement
 4. **Re-evaluate AFR** — Target 12.5–12.8:1 at sustained WOT
 5. **PVCR adjustment** — Once secondaries are opening, reduce PVCR insert from 0.063" to ~0.055" to clean up primary enrichment curve
+6. **Evaluate rear (secondary) power valve** — Factory 80531 has a 3.5 inHg PV in the secondary metering block. Forum consensus is mixed: pulling it is common advice on most Holleys, but on big vacuum-secondary carbs like the 80531 it helps the primary-to-secondary transition. Test with and without after secondary spring swap. See: [Speed-Talk 80531 thread](https://www.speed-talk.com/forum/viewtopic.php?t=47525), [Chevelles.com 80531 thread](https://www.chevelles.com/threads/holley-80531.331577/)
 
 ## Session History
 
