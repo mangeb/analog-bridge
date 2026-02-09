@@ -132,9 +132,11 @@ function update(d) {
   else if (hasAfr2) afrAvg = afr2;
 
   const afrNoData = afrAvg <= 0;
+  const afrLean = afrAvg > 14.7;
+  const afrAlarm = afrNoData || afrLean;
   el.afrAvg.textContent = afrNoData ? '--' : afrAvg.toFixed(1);
   el.afrAvg.className = 'gauge-value ' + (afrNoData ? 'warn-oil' : afrClass(afrAvg));
-  el.afrCard.classList.toggle('alarm-active', afrNoData);
+  el.afrCard.classList.toggle('alarm-active', afrAlarm);
   el.afr1.textContent = hasAfr1 ? afr1.toFixed(1) : '--';
   el.afr2.textContent = hasAfr2 ? afr2.toFixed(1) : '--';
 
