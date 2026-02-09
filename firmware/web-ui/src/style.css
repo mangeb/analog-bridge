@@ -26,7 +26,12 @@
 
 /* Warning thresholds */
 .warn-oil { color: #ef5350; }
-.warn-clt { color: #ef5350; }
+
+/* Coolant temp gradient */
+.clt-cold { color: #4fc3f7; }    /* < 180 — turquoise (warming up) */
+.clt-normal { color: #66bb6a; }  /* 180-199 — green (operating) */
+.clt-warm { color: #ffa726; }    /* 200-209 — yellow (getting hot) */
+.clt-hot { color: #ef5350; }     /* ≥ 210 — red (alarm) */
 
 /* ── Critical alarm: blinking red cell ── */
 .alarm-active {

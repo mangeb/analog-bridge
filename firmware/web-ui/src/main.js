@@ -63,6 +63,16 @@ function afrClass(val) {
 }
 
 //----------------------------------------------------------------
+// Coolant temp color coding
+//----------------------------------------------------------------
+function cltClass(val) {
+  if (val >= 210) return 'clt-hot';
+  if (val >= 200) return 'clt-warm';
+  if (val >= 180) return 'clt-normal';
+  return 'clt-cold';
+}
+
+//----------------------------------------------------------------
 // G-force canvas drawing
 //----------------------------------------------------------------
 function drawGForce(ax, ay) {
@@ -134,11 +144,11 @@ function update(d) {
   el.oil.className = 'gauge-value' + (oilAlarm ? ' warn-oil' : '');
   el.oilCard.classList.toggle('alarm-active', oilAlarm);
 
-  // Coolant — alarm if over 210 F
+  // Coolant — color gradient + alarm if over 210 F
   const cltVal = d.eng.clt;
   el.clt.textContent = cltVal > 0 ? Math.round(cltVal) : '--';
-  const cltAlarm = cltVal > 210;
-  el.clt.className = 'gauge-value' + (cltAlarm ? ' warn-clt' : '');
+  const cltAlarm = cltVal >= 210;
+  el.clt.className = 'gauge-value ' + (cltVal > 0 ? cltClass(cltVal) : 'clt-cold');
   el.cltCard.classList.toggle('alarm-active', cltAlarm);
 
   // Speed — GPS is primary (big), VSS is secondary (small)
