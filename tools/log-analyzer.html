@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log Analyzer — 1969 Nova 454 BBC</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; display: flex; justify-content: center; padding: 16px; }
+.container { max-width: 900px; width: 100%; }
+h1 { font-size: 1.4rem; color: #4fc3f7; margin-bottom: 2px; }
+.subtitle { color: #888; font-size: 0.82rem; margin-bottom: 14px; }
+.card { background: #16213e; border-radius: 10px; padding: 16px; margin-bottom: 12px; border: 1px solid #1a3a5c; }
+.card h2 { font-size: 0.95rem; color: #4fc3f7; margin-bottom: 10px; border-bottom: 1px solid #1a3a5c; padding-bottom: 6px; }
+.hidden { display: none !important; }
+
+/* Upload */
+.upload-zone { border: 2px dashed #2a4a6c; border-radius: 10px; padding: 40px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+.upload-zone:hover, .upload-zone.dragover { border-color: #4fc3f7; background: rgba(79,195,247,0.05); }
+.upload-zone .icon { font-size: 2rem; margin-bottom: 8px; color: #4fc3f7; }
+.upload-zone p { color: #888; font-size: 0.85rem; }
+.upload-zone .hint { font-size: 0.75rem; color: #555; margin-top: 6px; }
+
+/* Dashboard */
+.dash-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; text-align: center; }
+.dash-item .val { font-size: 1.6rem; font-weight: 700; color: #fff; }
+.dash-item .lbl { font-size: 0.7rem; color: #888; margin-top: 2px; }
+.dash-item.cond .val { font-size: 1rem; }
+
+/* Playback */
+.playback { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.playback button { background: #0f1a30; border: 1px solid #2a4a6c; color: #e0e0e0; padding: 6px 14px; border-radius: 5px; cursor: pointer; font-size: 0.85rem; }
+.playback button:hover { border-color: #4fc3f7; color: #4fc3f7; }
+.playback button.active { background: #1a3a5c; border-color: #4fc3f7; color: #4fc3f7; }
+.time-display { font-size: 0.85rem; color: #ccc; font-variant-numeric: tabular-nums; min-width: 120px; }
+.scrubber { flex: 1; min-width: 150px; -webkit-appearance: none; background: #0f1a30; height: 6px; border-radius: 3px; outline: none; }
+.scrubber::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #4fc3f7; cursor: pointer; }
+.speed-sel { background: #0f1a30; border: 1px solid #2a4a6c; color: #ccc; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; }
+
+/* Channels */
+.ch-bar { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.ch-bar label { font-size: 0.75rem; color: #888; display: flex; align-items: center; gap: 3px; cursor: pointer; padding: 2px 6px; border-radius: 3px; border: 1px solid transparent; }
+.ch-bar label:hover { border-color: #2a4a6c; }
+.ch-bar input { width: auto; }
+
+/* Chart */
+.chart-wrap { position: relative; width: 100%; height: 280px; }
+.chart-wrap canvas { width: 100% !important; height: 100% !important; }
+
+/* AFR Gauge */
+.afr-gauges { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 10px; }
+.afr-gauge .label { font-size: 0.75rem; color: #888; margin-bottom: 4px; }
+.afr-gauge .bar-bg { height: 16px; background: #0f1a30; border-radius: 3px; position: relative; overflow: hidden; }
+.afr-gauge .bar-fill { height: 100%; border-radius: 3px; transition: width 0.15s, background 0.15s; }
+.afr-gauge .reading { font-size: 1.1rem; font-weight: 600; color: #fff; margin-top: 4px; }
+.cond-row { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.cond-badge { padding: 4px 12px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
+.cond-target { font-size: 0.8rem; color: #888; }
+.cond-status { font-size: 0.8rem; font-weight: 600; }
+
+/* Condition legend */
+.cond-legend { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cond-legend-item { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: #888; }
+.cond-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+/* Map */
+#mapContainer { width: 100%; height: 320px; border-radius: 8px; overflow: hidden; }
+.map-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.map-controls label { font-size: 0.8rem; color: #888; }
+.map-controls select { background: #0f1a30; border: 1px solid #2a4a6c; color: #ccc; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; }
+
+/* Collapsible */
+details { margin-bottom: 12px; }
+details > summary { background: #16213e; border: 1px solid #1a3a5c; border-radius: 10px; padding: 10px 16px; cursor: pointer; font-size: 0.9rem; color: #4fc3f7; font-weight: 500; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary::after { content: '\25B8'; font-size: 0.8rem; color: #555; transition: transform 0.2s; }
+details[open] > summary::after { transform: rotate(90deg); }
+details[open] > summary { border-radius: 10px 10px 0 0; }
+.panel { background: #16213e; border: 1px solid #1a3a5c; border-top: none; border-radius: 0 0 10px 10px; padding: 14px; }
+
+/* Smoothing */
+.smooth-row { display: flex; align-items: center; gap: 12px; }
+.smooth-row label { font-size: 0.8rem; color: #888; }
+.smooth-row input[type=range] { width: 120px; }
+.smooth-row .val { font-size: 0.8rem; color: #4fc3f7; min-width: 30px; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+th { color: #4fc3f7; text-align: right; padding: 4px 8px; border-bottom: 1px solid #1a3a5c; }
+th:first-child { text-align: left; }
+td { text-align: right; padding: 4px 8px; color: #ccc; }
+td:first-child { text-align: left; color: #aaa; }
+
+/* G-G diagram */
+.gg-wrap { position: relative; width: 100%; max-width: 360px; margin: 0 auto; }
+.gg-wrap canvas { width: 100% !important; }
+
+/* Values panel */
+.vals-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; font-size: 0.75rem; }
+.vals-grid .vl { color: #888; }
+.vals-grid .vv { color: #ccc; font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Log Analyzer</h1>
+  <p class="subtitle">1969 Nova 454 BBC — Analog Bridge Datalogger</p>
+
+  <!-- Upload -->
+  <div class="card" id="uploadCard">
+    <div class="upload-zone" id="uploadZone">
+      <div class="icon">&#128190;</div>
+      <p>Drop a CSV log file here, or click to browse</p>
+      <p class="hint">25-column Analog Bridge CSV at 12.5 Hz</p>
+      <input type="file" id="fileInput" accept=".csv" style="display:none">
+    </div>
+  </div>
+
+  <!-- Everything below hidden until file loaded -->
+  <div id="mainUI" class="hidden">
+
+    <!-- Dashboard -->
+    <div class="card dash">
+      <div class="dash-grid">
+        <div class="dash-item"><div class="val" id="dDuration">—</div><div class="lbl">Duration</div></div>
+        <div class="dash-item"><div class="val" id="dRows">—</div><div class="lbl">Rows</div></div>
+        <div class="dash-item"><div class="val" id="dKeyframes">—</div><div class="lbl">Keyframes</div></div>
+        <div class="dash-item cond"><div class="val" id="dFilename">—</div><div class="lbl">File</div></div>
+      </div>
+    </div>
+
+    <!-- Playback -->
+    <div class="card">
+      <div class="playback">
+        <button id="btnPlay" onclick="togglePlay()">&#9654; Play</button>
+        <button onclick="seekDelta(-5)">-5s</button>
+        <button onclick="seekDelta(5)">+5s</button>
+        <span class="time-display" id="timeDisplay">0:00.0 / 0:00.0</span>
+        <input type="range" class="scrubber" id="scrubber" min="0" max="1000" value="0" oninput="onScrub(this.value)">
+        <select class="speed-sel" id="speedSel" onchange="setSpeed(this.value)">
+          <option value="0.25">0.25x</option>
+          <option value="0.5">0.5x</option>
+          <option value="1" selected>1x</option>
+          <option value="2">2x</option>
+          <option value="4">4x</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Timeline Chart -->
+    <div class="card">
+      <div class="ch-bar" id="channelBar"></div>
+      <div class="chart-wrap"><canvas id="timelineChart"></canvas></div>
+    </div>
+
+    <!-- AFR Gauge + Condition -->
+    <div class="card">
+      <h2>AFR Status</h2>
+      <div class="afr-gauges">
+        <div class="afr-gauge"><div class="label">Bank 1</div><div class="bar-bg"><div class="bar-fill" id="afrBar1"></div></div><div class="reading" id="afrVal1">—</div></div>
+        <div class="afr-gauge"><div class="label">Bank 2</div><div class="bar-bg"><div class="bar-fill" id="afrBar2"></div></div><div class="reading" id="afrVal2">—</div></div>
+        <div class="afr-gauge"><div class="label">Combined</div><div class="bar-bg"><div class="bar-fill" id="afrBarC"></div></div><div class="reading" id="afrValC">—</div></div>
+      </div>
+      <div class="cond-row">
+        <div class="cond-badge" id="condBadge">—</div>
+        <div class="cond-target" id="condTarget">Target: —</div>
+        <div class="cond-status" id="condStatus"></div>
+      </div>
+      <div class="cond-legend" id="condLegend"></div>
+    </div>
+
+    <!-- GPS Map -->
+    <div class="card">
+      <h2>GPS Track</h2>
+      <div class="map-controls">
+        <label>Color by:</label>
+        <select id="mapMetric" onchange="updateMapRoute()">
+          <option value="afr">AFR</option>
+          <option value="speed">Speed</option>
+          <option value="map">MAP Vacuum</option>
+          <option value="gforce">G-Force</option>
+          <option value="condition">Condition</option>
+        </select>
+      </div>
+      <div id="mapContainer"></div>
+    </div>
+
+    <!-- Current Values -->
+    <details>
+      <summary>Live Sensor Values</summary>
+      <div class="panel"><div class="vals-grid" id="valsGrid"></div></div>
+    </details>
+
+    <!-- Smoothing -->
+    <details>
+      <summary>Smoothing &amp; Interpolation</summary>
+      <div class="panel">
+        <div class="smooth-row">
+          <label>Moving Average:</label>
+          <input type="range" id="smoothWindow" min="1" max="50" value="1" oninput="onSmoothChange()">
+          <span class="val" id="smoothVal">1</span><span style="font-size:0.75rem;color:#666">pts</span>
+          <label style="margin-left:16px"><input type="checkbox" id="showRaw" onchange="rebuildChart()" style="width:auto"> Show raw</label>
+        </div>
+      </div>
+    </details>
+
+    <!-- Condition Stats -->
+    <details>
+      <summary>Condition Statistics</summary>
+      <div class="panel"><table id="statsTable"><thead><tr><th>Condition</th><th>Count</th><th>Time</th><th>Avg AFR</th><th>Min</th><th>Max</th><th>Target</th></tr></thead><tbody></tbody></table></div>
+    </details>
+
+    <!-- G-G Diagram -->
+    <details>
+      <summary>G-G Diagram</summary>
+      <div class="panel"><div class="gg-wrap"><canvas id="ggCanvas" width="360" height="360"></canvas></div></div>
+    </details>
+
+    <!-- Keyframes & Export -->
+    <details>
+      <summary>Keyframes &amp; Export</summary>
+      <div class="panel">
+        <div id="keyframeList" style="margin-bottom:10px;font-size:0.8rem;color:#888">No keyframes</div>
+        <button onclick="exportSegment()" style="background:#0f1a30;border:1px solid #2a4a6c;color:#ccc;padding:6px 14px;border-radius:5px;cursor:pointer;font-size:0.8rem;">Export visible segment as CSV</button>
+      </div>
+    </details>
+  </div>
+</div>
+
+<script>
+// ══════════ GLOBALS ══════════
+let rows = [], smoothedRows = [], filename = '';
+let playIdx = 0, playing = false, playSpeed = 1, playTimer = null;
+let chart = null, leafletMap = null, routeLayer = null, playMarker = null;
+const SAMPLE_MS = 80;
+
+// ══════════ CONDITION DEFINITIONS ══════════
+const CONDITIONS = {
+  IDLE:       { label: 'Idle',           color: '#78909c', afr: [13.5, 14.0] },
+  CRUISE_LT:  { label: 'Light Cruise',   color: '#66bb6a', afr: [14.2, 14.7] },
+  CRUISE_MOD: { label: 'Mod Cruise',     color: '#26a69a', afr: [13.5, 14.0] },
+  ACCEL:      { label: 'Accel / Tip-In', color: '#ffa726', afr: [12.0, 12.8] },
+  WOT_LOW:    { label: 'WOT Low',        color: '#ef5350', afr: [12.5, 13.0] },
+  WOT_MID:    { label: 'WOT Mid',        color: '#e53935', afr: [12.5, 12.8] },
+  WOT_HIGH:   { label: 'WOT High',       color: '#b71c1c', afr: [12.2, 12.8] },
+  DECEL:      { label: 'Decel / Coast',  color: '#5c6bc0', afr: [14.7, 16.0] },
+  UNKNOWN:    { label: 'Unknown',        color: '#444',    afr: [12.0, 15.0] },
+};
+
+// ══════════ CHANNELS ══════════
+const CHANNELS = {
+  afr:     { label: 'AFR (avg)',  color: '#4fc3f7', axis: 'afr',   unit: ':1',    get: r => (r.afr + r.afr1) / 2 },
+  afr1:    { label: 'AFR Bank1', color: '#29b6f6', axis: 'afr',   unit: ':1',    get: r => r.afr },
+  afr2:    { label: 'AFR Bank2', color: '#81d4fa', axis: 'afr',   unit: ':1',    get: r => r.afr1 },
+  speed:   { label: 'GPS Speed', color: '#66bb6a', axis: 'speed', unit: 'mph',   get: r => r.speed },
+  vss:     { label: 'VSS',       color: '#a5d6a7', axis: 'speed', unit: 'mph',   get: r => r.vss },
+  map:     { label: 'MAP Vac',   color: '#ffa726', axis: 'psi',   unit: 'inHg',  get: r => r.map },
+  oilp:    { label: 'Oil Press', color: '#ff7043', axis: 'psi',   unit: 'psi',   get: r => r.oilp },
+  coolant: { label: 'Coolant',   color: '#ef5350', axis: 'temp',  unit: '°F',    get: r => r.coolant },
+  accx:    { label: 'Accel X',   color: '#ab47bc', axis: 'g',     unit: 'g',     get: r => r.accx },
+  accy:    { label: 'Accel Y',   color: '#7e57c2', axis: 'g',     unit: 'g',     get: r => r.accy },
+  gforce:  { label: 'G-Force',   color: '#ce93d8', axis: 'g',     unit: 'g',     get: r => Math.sqrt(r.accx**2 + r.accy**2) },
+  alt:     { label: 'Altitude',  color: '#8d6e63', axis: 'alt',   unit: 'ft',    get: r => r.alt },
+};
+const defaultChannels = ['afr', 'speed', 'map'];
+let activeChannels = new Set(defaultChannels);
+
+// ══════════ UPLOAD ══════════
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+uploadZone.addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => { e.preventDefault(); uploadZone.classList.remove('dragover'); if (e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', () => { if (fileInput.files.length) loadFile(fileInput.files[0]); });
+
+function loadFile(file) {
+  filename = file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    parseCSV(e.target.result);
+    if (rows.length > 0) initUI();
+  };
+  reader.readAsText(file);
+}
+
+// ══════════ CSV PARSER ══════════
+const EXPECTED_COLS = ['time','lat','lon','speed','alt','dir','sats','accx','accy','accz','rotx','roty','rotz','magx','magy','magz','imutemp','afr','afr1','vss','map','oilp','coolant','gpsstale','keyframe'];
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  if (lines.length < 3) { alert('CSV too short'); return; }
+
+  // Find header line (skip date line if present)
+  let headerIdx = 0;
+  if (!lines[0].includes('time')) headerIdx = 1;
+  const header = lines[headerIdx].split(',').map(h => h.trim().toLowerCase());
+
+  // Build column index map
+  const colMap = {};
+  header.forEach((h, i) => colMap[h] = i);
+
+  // Skip units row
+  const dataStart = headerIdx + 2;
+  rows = [];
+  for (let i = dataStart; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const c = line.split(',');
+    if (c.length < 20) continue;
+
+    const get = (name, def = 0) => {
+      const idx = colMap[name];
+      return idx !== undefined ? (parseFloat(c[idx]) || def) : def;
+    };
+
+    const lat = get('lat');
+    const lon = get('lon');
+
+    rows.push({
+      idx: rows.length,
+      time: get('time'),
+      lat: Math.abs(lat) > 360 ? lat / 1e7 : lat,
+      lon: Math.abs(lon) > 360 ? lon / 1e7 : lon,
+      speed: get('speed'),
+      alt: get('alt'),
+      dir: get('dir'),
+      sats: get('sats'),
+      accx: get('accx'), accy: get('accy'), accz: get('accz'),
+      rotx: get('rotx'), roty: get('roty'), rotz: get('rotz'),
+      magx: get('magx'), magy: get('magy'), magz: get('magz'),
+      imuTemp: get('imutemp'),
+      afr: get('afr'), afr1: get('afr1'),
+      vss: get('vss'), map: get('map'),
+      oilp: get('oilp'), coolant: get('coolant'),
+      gpsStale: get('gpsstale') > 0,
+      keyframe: get('keyframe'),
+      condition: 'UNKNOWN',
+    });
+  }
+
+  // Detect conditions
+  detectAllConditions();
+  applySmoothing();
+}
+
+// ══════════ CONDITION DETECTION ══════════
+let prevCondition = 'UNKNOWN', condHoldUntil = 0;
+const HYSTERESIS_ROWS = Math.round(500 / SAMPLE_MS); // 0.5s
+
+function detectCondition(r, prevR) {
+  const { vss, map: mapVac, accx } = r;
+  const speed = vss > 0 ? vss : r.speed;
+
+  // WOT: very low vacuum
+  if (mapVac < 3) {
+    if (speed < 40) return 'WOT_LOW';
+    if (speed < 60) return 'WOT_MID';
+    return 'WOT_HIGH';
+  }
+
+  // Decel: high vacuum + moving
+  if (mapVac > 18 && speed > 5) return 'DECEL';
+
+  // Accel: rapid MAP drop (vacuum decrease = throttle opening)
+  if (prevR) {
+    const mapDelta = prevR.map - mapVac;
+    if (mapDelta > 3) return 'ACCEL';
+  }
+
+  // Idle: slow + high vacuum
+  if (speed < 5 && mapVac > 12) return 'IDLE';
+
+  // Cruise: moderate vacuum
+  if (mapVac > 12) return 'CRUISE_LT';
+  if (mapVac >= 5) return 'CRUISE_MOD';
+
+  return 'UNKNOWN';
+}
+
+function detectAllConditions() {
+  prevCondition = 'UNKNOWN';
+  condHoldUntil = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const raw = detectCondition(rows[i], i > 0 ? rows[i-1] : null);
+    if (raw !== prevCondition && i >= condHoldUntil) {
+      prevCondition = raw;
+      condHoldUntil = i + HYSTERESIS_ROWS;
+    }
+    rows[i].condition = prevCondition;
+  }
+}
+
+// ══════════ SMOOTHING ══════════
+function applySmoothing() {
+  const win = parseInt(document.getElementById('smoothWindow')?.value || '1');
+  if (win <= 1) { smoothedRows = rows; return; }
+  const fields = ['afr','afr1','vss','speed','map','oilp','coolant','accx','accy','accz','rotx','roty','rotz'];
+  smoothedRows = rows.map((r, i) => {
+    const out = { ...r };
+    const lo = Math.max(0, i - Math.floor(win/2));
+    const hi = Math.min(rows.length - 1, i + Math.floor(win/2));
+    const n = hi - lo + 1;
+    fields.forEach(f => {
+      let sum = 0;
+      for (let j = lo; j <= hi; j++) sum += rows[j][f];
+      out[f] = sum / n;
+    });
+    return out;
+  });
+}
+
+function onSmoothChange() {
+  document.getElementById('smoothVal').textContent = document.getElementById('smoothWindow').value;
+  applySmoothing();
+  rebuildChart();
+  updatePlaybackUI();
+}
+
+// ══════════ INIT UI ══════════
+function initUI() {
+  document.getElementById('uploadCard').classList.add('hidden');
+  document.getElementById('mainUI').classList.remove('hidden');
+
+  const dur = rows[rows.length-1].time;
+  document.getElementById('dDuration').textContent = fmtTime(dur);
+  document.getElementById('dRows').textContent = rows.length.toLocaleString();
+  document.getElementById('dKeyframes').textContent = rows.filter(r => r.keyframe > 0).length;
+  document.getElementById('dFilename').textContent = filename;
+
+  document.getElementById('scrubber').max = rows.length - 1;
+  buildChannelBar();
+  buildCondLegend();
+  buildChart();
+  initMap();
+  buildKeyframeList();
+  buildStatsTable();
+  drawGG();
+  updatePlaybackUI();
+}
+
+// ══════════ CHANNEL BAR ══════════
+function buildChannelBar() {
+  const bar = document.getElementById('channelBar');
+  bar.innerHTML = '';
+  Object.entries(CHANNELS).forEach(([key, ch]) => {
+    const lbl = document.createElement('label');
+    lbl.innerHTML = `<input type="checkbox" ${activeChannels.has(key) ? 'checked' : ''} data-ch="${key}"><span style="color:${ch.color}">${ch.label}</span>`;
+    lbl.querySelector('input').addEventListener('change', e => {
+      if (e.target.checked) activeChannels.add(key); else activeChannels.delete(key);
+      rebuildChart();
+    });
+    bar.appendChild(lbl);
+  });
+}
+
+// ══════════ CONDITION LEGEND ══════════
+function buildCondLegend() {
+  const el = document.getElementById('condLegend');
+  el.innerHTML = '';
+  Object.entries(CONDITIONS).forEach(([k, c]) => {
+    if (k === 'UNKNOWN') return;
+    const item = document.createElement('span');
+    item.className = 'cond-legend-item';
+    item.innerHTML = `<span class="cond-dot" style="background:${c.color}"></span>${c.label}`;
+    el.appendChild(item);
+  });
+}
+
+// ══════════ CHART ══════════
+function buildChart() {
+  const ctx = document.getElementById('timelineChart').getContext('2d');
+
+  // Condition background plugin
+  const condBgPlugin = {
+    id: 'condBg',
+    beforeDraw(chart) {
+      const { ctx, chartArea: { left, right, top, bottom }, scales: { x } } = chart;
+      if (!x || !smoothedRows.length) return;
+      ctx.save();
+      let prevCond = null, startX = left;
+      const dataRows = smoothedRows;
+      for (let i = 0; i < dataRows.length; i++) {
+        const cond = dataRows[i].condition;
+        const px = x.getPixelForValue(i);
+        if (cond !== prevCond && prevCond !== null) {
+          ctx.fillStyle = (CONDITIONS[prevCond]?.color || '#444') + '18';
+          ctx.fillRect(startX, top, px - startX, bottom - top);
+          startX = px;
+        }
+        prevCond = cond;
+      }
+      if (prevCond) {
+        ctx.fillStyle = (CONDITIONS[prevCond]?.color || '#444') + '18';
+        ctx.fillRect(startX, top, right - startX, bottom - top);
+      }
+      ctx.restore();
+    }
+  };
+
+  // Playback cursor plugin
+  const cursorPlugin = {
+    id: 'cursor',
+    afterDraw(chart) {
+      const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
+      if (!x) return;
+      const px = x.getPixelForValue(playIdx);
+      ctx.save();
+      ctx.strokeStyle = '#ffffff88';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(px, top); ctx.lineTo(px, bottom); ctx.stroke();
+      ctx.restore();
+    }
+  };
+
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { datasets: [] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      parsing: false,
+      elements: { point: { radius: 0 }, line: { borderWidth: 1.5 } },
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: { type: 'linear', display: true, ticks: { callback: v => fmtTime(smoothedRows[Math.round(v)]?.time || 0), color: '#666', maxTicksLimit: 10 }, grid: { color: '#1a3a5c33' } },
+      },
+    },
+    plugins: [condBgPlugin, cursorPlugin],
+  });
+  rebuildChart();
+}
+
+function rebuildChart() {
+  if (!chart || !smoothedRows.length) return;
+  const data = smoothedRows;
+  const showRaw = document.getElementById('showRaw')?.checked;
+
+  // Build y-axis configs
+  const axisMap = {};
+  const datasets = [];
+
+  activeChannels.forEach(key => {
+    const ch = CHANNELS[key];
+    if (!ch) return;
+    if (!axisMap[ch.axis]) {
+      axisMap[ch.axis] = {
+        type: 'linear',
+        position: Object.keys(axisMap).length % 2 === 0 ? 'left' : 'right',
+        ticks: { color: ch.color + '99', maxTicksLimit: 6 },
+        grid: { drawOnChartArea: Object.keys(axisMap).length === 0, color: '#1a3a5c22' },
+      };
+    }
+
+    datasets.push({
+      label: ch.label,
+      data: data.map((r, i) => ({ x: i, y: ch.get(r) })),
+      borderColor: ch.color,
+      backgroundColor: ch.color + '11',
+      yAxisID: ch.axis,
+      tension: 0.2,
+    });
+
+    // Raw overlay
+    if (showRaw && smoothedRows !== rows) {
+      datasets.push({
+        label: ch.label + ' (raw)',
+        data: rows.map((r, i) => ({ x: i, y: ch.get(r) })),
+        borderColor: ch.color + '33',
+        borderDash: [2, 2],
+        yAxisID: ch.axis,
+        tension: 0,
+        borderWidth: 1,
+      });
+    }
+  });
+
+  chart.data.datasets = datasets;
+  chart.options.scales = { x: chart.options.scales.x };
+  Object.entries(axisMap).forEach(([id, cfg]) => chart.options.scales[id] = cfg);
+  chart.update('none');
+}
+
+// ══════════ MAP ══════════
+function initMap() {
+  const gpsRows = rows.filter(r => r.lat !== 0 && r.lon !== 0 && !r.gpsStale);
+  if (gpsRows.length === 0) {
+    document.getElementById('mapContainer').innerHTML = '<p style="padding:40px;text-align:center;color:#666">No GPS data</p>';
+    return;
+  }
+
+  leafletMap = L.map('mapContainer', { zoomControl: true }).setView([gpsRows[0].lat, gpsRows[0].lon], 14);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap',
+    maxZoom: 19,
+  }).addTo(leafletMap);
+
+  playMarker = L.circleMarker([gpsRows[0].lat, gpsRows[0].lon], { radius: 7, color: '#fff', fillColor: '#4fc3f7', fillOpacity: 1, weight: 2 }).addTo(leafletMap);
+
+  updateMapRoute();
+
+  // Fit bounds
+  const bounds = L.latLngBounds(gpsRows.map(r => [r.lat, r.lon]));
+  leafletMap.fitBounds(bounds, { padding: [30, 30] });
+}
+
+function updateMapRoute() {
+  if (!leafletMap) return;
+  if (routeLayer) leafletMap.removeLayer(routeLayer);
+
+  const metric = document.getElementById('mapMetric').value;
+  const gpsRows = rows.filter(r => r.lat !== 0 && r.lon !== 0 && !r.gpsStale);
+  if (gpsRows.length < 2) return;
+
+  routeLayer = L.layerGroup();
+
+  for (let i = 1; i < gpsRows.length; i++) {
+    const r = gpsRows[i];
+    const color = metricColor(r, metric);
+    L.polyline([[gpsRows[i-1].lat, gpsRows[i-1].lon], [r.lat, r.lon]], { color, weight: 3, opacity: 0.8 }).addTo(routeLayer);
+  }
+  routeLayer.addTo(leafletMap);
+}
+
+function metricColor(r, metric) {
+  switch (metric) {
+    case 'afr': return afrToColor((r.afr + r.afr1) / 2);
+    case 'speed': return valToColor(r.vss || r.speed, 0, 100, '#66bb6a', '#ef5350');
+    case 'map': return valToColor(r.map, 0, 20, '#ef5350', '#66bb6a');
+    case 'gforce': return valToColor(Math.sqrt(r.accx**2 + r.accy**2), 0, 1.5, '#66bb6a', '#ef5350');
+    case 'condition': return CONDITIONS[r.condition]?.color || '#444';
+    default: return '#4fc3f7';
+  }
+}
+
+function afrToColor(afr) {
+  if (afr < 11.5) return '#b71c1c';
+  if (afr < 12.5) return '#ff5722';
+  if (afr < 13.0) return '#ff9800';
+  if (afr < 13.8) return '#ffc107';
+  if (afr < 14.5) return '#8bc34a';
+  return '#4caf50';
+}
+
+function valToColor(val, min, max, colLow, colHigh) {
+  const t = Math.max(0, Math.min(1, (val - min) / (max - min)));
+  return t < 0.5 ? colLow : colHigh;
+}
+
+// ══════════ PLAYBACK ══════════
+function togglePlay() {
+  if (playing) pause(); else play();
+}
+
+function play() {
+  playing = true;
+  document.getElementById('btnPlay').textContent = '\u23F8 Pause';
+  document.getElementById('btnPlay').classList.add('active');
+  const interval = SAMPLE_MS / playSpeed;
+  playTimer = setInterval(() => {
+    playIdx++;
+    if (playIdx >= rows.length) { playIdx = rows.length - 1; pause(); return; }
+    updatePlaybackUI();
+  }, interval);
+}
+
+function pause() {
+  playing = false;
+  clearInterval(playTimer);
+  document.getElementById('btnPlay').textContent = '\u25B6 Play';
+  document.getElementById('btnPlay').classList.remove('active');
+}
+
+function seekDelta(sec) {
+  const delta = Math.round(sec * 1000 / SAMPLE_MS);
+  playIdx = Math.max(0, Math.min(rows.length - 1, playIdx + delta));
+  updatePlaybackUI();
+}
+
+function onScrub(val) {
+  playIdx = parseInt(val);
+  updatePlaybackUI();
+}
+
+function setSpeed(val) { playSpeed = parseFloat(val); if (playing) { pause(); play(); } }
+
+function updatePlaybackUI() {
+  if (!rows.length) return;
+  const r = smoothedRows[playIdx] || rows[playIdx];
+  const raw = rows[playIdx];
+  const total = rows[rows.length-1].time;
+
+  // Time display
+  document.getElementById('timeDisplay').textContent = `${fmtTime(raw.time)} / ${fmtTime(total)}`;
+  document.getElementById('scrubber').value = playIdx;
+
+  // AFR gauges
+  const afr1 = r.afr, afr2 = r.afr1, afrC = (afr1 + afr2) / 2;
+  updateAfrBar('afrBar1', 'afrVal1', afr1, raw.condition);
+  updateAfrBar('afrBar2', 'afrVal2', afr2, raw.condition);
+  updateAfrBar('afrBarC', 'afrValC', afrC, raw.condition);
+
+  // Condition
+  const cond = CONDITIONS[raw.condition] || CONDITIONS.UNKNOWN;
+  const badge = document.getElementById('condBadge');
+  badge.textContent = cond.label;
+  badge.style.background = cond.color;
+  badge.style.color = '#fff';
+  document.getElementById('condTarget').textContent = `Target: ${cond.afr[0].toFixed(1)}–${cond.afr[1].toFixed(1)}`;
+
+  const mid = (cond.afr[0] + cond.afr[1]) / 2;
+  const dev = afrC - mid;
+  const statusEl = document.getElementById('condStatus');
+  if (afrC < cond.afr[0] - 0.5) { statusEl.textContent = 'LEAN!'; statusEl.style.color = '#ef5350'; }
+  else if (afrC < cond.afr[0]) { statusEl.textContent = 'Lean'; statusEl.style.color = '#ffa726'; }
+  else if (afrC <= cond.afr[1]) { statusEl.textContent = 'On Target'; statusEl.style.color = '#66bb6a'; }
+  else if (afrC <= cond.afr[1] + 0.5) { statusEl.textContent = 'Rich'; statusEl.style.color = '#ffa726'; }
+  else { statusEl.textContent = 'RICH!'; statusEl.style.color = '#ff7043'; }
+
+  // Map marker
+  if (playMarker && raw.lat && raw.lon) playMarker.setLatLng([raw.lat, raw.lon]);
+
+  // Chart cursor
+  if (chart) chart.update('none');
+
+  // Live values
+  updateValsGrid(r, raw);
+}
+
+function updateAfrBar(barId, valId, afr, condition) {
+  const cond = CONDITIONS[condition] || CONDITIONS.UNKNOWN;
+  const pct = Math.max(0, Math.min(100, ((afr - 10) / 6) * 100));
+  const el = document.getElementById(barId);
+  el.style.width = pct + '%';
+  el.style.background = afrToColor(afr);
+  document.getElementById(valId).textContent = afr.toFixed(2);
+}
+
+// ══════════ LIVE VALUES ══════════
+function updateValsGrid(r, raw) {
+  const el = document.getElementById('valsGrid');
+  const items = [
+    ['Speed', `${r.speed.toFixed(1)} mph`], ['VSS', `${r.vss.toFixed(1)} mph`],
+    ['MAP', `${r.map.toFixed(1)} inHg`], ['Oil', `${r.oilp.toFixed(0)} psi`],
+    ['Coolant', `${r.coolant.toFixed(0)} °F`], ['Alt', `${r.alt.toFixed(0)} ft`],
+    ['Sats', `${raw.sats}`], ['Dir', `${r.dir.toFixed(0)}°`],
+    ['Acc X', `${r.accx.toFixed(3)} g`], ['Acc Y', `${r.accy.toFixed(3)} g`],
+    ['Acc Z', `${r.accz.toFixed(3)} g`], ['G-Force', `${Math.sqrt(r.accx**2+r.accy**2).toFixed(3)} g`],
+    ['Rot X', `${r.rotx.toFixed(1)} dps`], ['Rot Y', `${r.roty.toFixed(1)} dps`],
+    ['IMU Temp', `${r.imuTemp.toFixed(1)} °C`], ['Keyframe', raw.keyframe > 0 ? `#${raw.keyframe}` : '—'],
+  ];
+  el.innerHTML = items.map(([l,v]) => `<span class="vl">${l}</span><span class="vv">${v}</span>`).join('');
+}
+
+// ══════════ STATS TABLE ══════════
+function buildStatsTable() {
+  const tbody = document.querySelector('#statsTable tbody');
+  tbody.innerHTML = '';
+  Object.entries(CONDITIONS).forEach(([key, cond]) => {
+    if (key === 'UNKNOWN') return;
+    const cRows = rows.filter(r => r.condition === key);
+    if (cRows.length === 0) { return; }
+    const afrs = cRows.map(r => (r.afr + r.afr1) / 2);
+    const avg = afrs.reduce((a,b) => a+b, 0) / afrs.length;
+    const min = Math.min(...afrs);
+    const max = Math.max(...afrs);
+    const timeSec = cRows.length * SAMPLE_MS / 1000;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><span class="cond-dot" style="background:${cond.color};display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:middle"></span>${cond.label}</td><td>${cRows.length}</td><td>${fmtTime(timeSec)}</td><td>${avg.toFixed(2)}</td><td>${min.toFixed(2)}</td><td>${max.toFixed(2)}</td><td>${cond.afr[0]}–${cond.afr[1]}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ══════════ G-G DIAGRAM ══════════
+function drawGG() {
+  const canvas = document.getElementById('ggCanvas');
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const size = 360;
+  canvas.width = size * dpr; canvas.height = size * dpr;
+  canvas.style.width = size + 'px'; canvas.style.height = size + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const cx = size / 2, cy = size / 2, r = size / 2 - 30;
+
+  ctx.fillStyle = '#0f1a30';
+  ctx.fillRect(0, 0, size, size);
+
+  // Grid circles
+  [0.25, 0.5, 0.75, 1.0].forEach(g => {
+    ctx.strokeStyle = '#1a3a5c';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, r * g, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#555';
+    ctx.font = '10px sans-serif';
+    ctx.fillText(g.toFixed(2) + 'g', cx + r * g + 2, cy - 4);
+  });
+
+  // Axes
+  ctx.strokeStyle = '#2a4a6c';
+  ctx.beginPath(); ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r); ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = '#888'; ctx.font = '11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Lateral G (right +)', cx, size - 4);
+  ctx.save(); ctx.translate(10, cy); ctx.rotate(-Math.PI/2); ctx.fillText('Longitudinal G (accel +)', 0, 0); ctx.restore();
+
+  // Plot points
+  const maxG = 1.0;
+  rows.forEach(row => {
+    const lat = row.accy; // lateral
+    const lon = row.accx; // longitudinal
+    const px = cx + (lat / maxG) * r;
+    const py = cy - (lon / maxG) * r;
+    const cond = CONDITIONS[row.condition];
+    ctx.fillStyle = (cond?.color || '#444') + '40';
+    ctx.fillRect(px - 1, py - 1, 2, 2);
+  });
+}
+
+// ══════════ KEYFRAMES ══════════
+function buildKeyframeList() {
+  const el = document.getElementById('keyframeList');
+  const kfs = rows.filter(r => r.keyframe > 0);
+  if (kfs.length === 0) { el.textContent = 'No keyframes in this log'; return; }
+  el.innerHTML = '';
+  kfs.forEach(r => {
+    const btn = document.createElement('button');
+    btn.textContent = `#${r.keyframe} @ ${fmtTime(r.time)}`;
+    btn.style.cssText = 'background:#0f1a30;border:1px solid #2a4a6c;color:#4fc3f7;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.8rem;margin:2px;';
+    btn.onclick = () => { playIdx = r.idx; updatePlaybackUI(); };
+    el.appendChild(btn);
+  });
+}
+
+// ══════════ EXPORT ══════════
+function exportSegment() {
+  const header = 'time,lat,lon,speed,alt,dir,sats,accx,accy,accz,rotx,roty,rotz,magx,magy,magz,imuTemp,afr,afr1,vss,map,oilp,coolant,gpsStale,keyframe,condition\n';
+  let csv = header;
+  rows.forEach(r => {
+    csv += [r.time,r.lat,r.lon,r.speed,r.alt,r.dir,r.sats,r.accx,r.accy,r.accz,r.rotx,r.roty,r.rotz,r.magx,r.magy,r.magz,r.imuTemp,r.afr,r.afr1,r.vss,r.map,r.oilp,r.coolant,r.gpsStale?1:0,r.keyframe,r.condition].join(',') + '\n';
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename.replace('.csv', '_analyzed.csv');
+  a.click();
+}
+
+// ══════════ UTILS ══════════
+function fmtTime(s) {
+  const m = Math.floor(s / 60), sec = s % 60;
+  return `${m}:${sec < 10 ? '0' : ''}${sec.toFixed(1)}`;
+}
+
+// ══════════ SYNTHETIC TEST DATA ══════════
+function loadSyntheticData() {
+  // Generate ~60s of test data covering all conditions
+  const rr = [];
+  const baseLat = 37.7749, baseLon = -122.4194; // SF
+  let lat = baseLat, lon = baseLon, dir = 90, spd = 0, mapV = 20;
+  let afr1 = 14.0, afr2 = 13.8, coolant = 180, oilp = 60;
+
+  const scenarios = [
+    { dur: 5, cond: 'idle', spd: 0, map: 20, afr: 13.8 },
+    { dur: 5, cond: 'accel', spd: [0,30], map: [20,4], afr: 12.5 },
+    { dur: 8, cond: 'cruise_lt', spd: 35, map: 16, afr: 14.5 },
+    { dur: 5, cond: 'cruise_mod', spd: 45, map: 10, afr: 13.6 },
+    { dur: 4, cond: 'accel', spd: [45,70], map: [10,2], afr: 12.3 },
+    { dur: 6, cond: 'wot_high', spd: 80, map: 1.5, afr: 12.5 },
+    { dur: 4, cond: 'decel', spd: [80,40], map: [1.5,20], afr: 15.0 },
+    { dur: 6, cond: 'cruise_lt', spd: 35, map: 16, afr: 14.3 },
+    { dur: 3, cond: 'decel', spd: [35,5], map: [16,20], afr: 15.2 },
+    { dur: 4, cond: 'idle', spd: 0, map: 20, afr: 13.7 },
+  ];
+
+  let t = 0;
+  scenarios.forEach(sc => {
+    const n = Math.round(sc.dur * 1000 / SAMPLE_MS);
+    for (let i = 0; i < n; i++) {
+      const frac = i / n;
+      const lerp = (a, b, f) => a + (b - a) * f;
+      const s = Array.isArray(sc.spd) ? lerp(sc.spd[0], sc.spd[1], frac) : sc.spd;
+      const m = Array.isArray(sc.map) ? lerp(sc.map[0], sc.map[1], frac) : sc.map;
+      const afrBase = sc.afr + (Math.random() - 0.5) * 0.4;
+
+      lat += Math.cos(dir * Math.PI / 180) * s * 0.0000001;
+      lon += Math.sin(dir * Math.PI / 180) * s * 0.0000001;
+      dir += (Math.random() - 0.5) * 2;
+
+      rr.push({
+        idx: rr.length, time: t,
+        lat, lon, speed: s, alt: 50, dir: dir % 360, sats: 10 + Math.floor(Math.random() * 4),
+        accx: (Math.random()-0.5)*0.3, accy: (Math.random()-0.5)*0.15, accz: -0.98 + (Math.random()-0.5)*0.05,
+        rotx: (Math.random()-0.5)*5, roty: (Math.random()-0.5)*5, rotz: (Math.random()-0.5)*2,
+        magx: 20+Math.random()*5, magy: -10+Math.random()*3, magz: 40+Math.random()*5,
+        imuTemp: 28 + Math.random()*2,
+        afr: afrBase + (Math.random()-0.5)*0.2,
+        afr1: afrBase + 0.2 + (Math.random()-0.5)*0.2,
+        vss: s + (Math.random()-0.5)*2,
+        map: m + (Math.random()-0.5)*0.5,
+        oilp: 55 + s * 0.1 + (Math.random()-0.5)*3,
+        coolant: 185 + Math.random()*5,
+        gpsStale: false, keyframe: (rr.length === 200 || rr.length === 500) ? rr.length : 0,
+        condition: 'UNKNOWN',
+      });
+      t += SAMPLE_MS / 1000;
+    }
+  });
+
+  rows = rr;
+  filename = 'synthetic_test.csv';
+  detectAllConditions();
+  applySmoothing();
+  initUI();
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+  if (e.code === 'ArrowLeft') seekDelta(-1);
+  if (e.code === 'ArrowRight') seekDelta(1);
+});
+
+// Add a "Load demo" link to upload zone
+const demoLink = document.createElement('p');
+demoLink.innerHTML = '<a href="#" style="color:#4fc3f7;font-size:0.8rem" id="loadDemo">or load synthetic demo data</a>';
+document.getElementById('uploadZone').appendChild(demoLink);
+document.getElementById('loadDemo').addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); loadSyntheticData(); });
+</script>
+</body>
+</html>
