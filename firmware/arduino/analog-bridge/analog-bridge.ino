@@ -1,6 +1,33 @@
 /**
- *  Analog Bridge - Datalogger for 1969 Chevrolet Nova 454 BBC
- *  Evolved from CarDuino v1.2
+ *  Analog Bridge — Automotive Datalogger
+ *  1969 Chevrolet Nova, 454 BBC
+ *
+ *  Logs GPS, 9-axis IMU, and engine data to SD card at 12.5 Hz.
+ *  Designed for Arduino Mega 2560 (also compiles for Uno with reduced I/O).
+ *
+ *  Hardware:
+ *    - u-blox GPS module on Serial1 (9600 default, configurable to 115200/5Hz)
+ *    - MPU9250 9-axis IMU on I2C (accelerometer, gyroscope, magnetometer, temp)
+ *    - Innovate Motorsports ISP2 daisy-chain on Serial2 (19200 baud):
+ *        SSI-4 #1: coolant temp, oil pressure
+ *        LC-1  #1: wideband AFR bank 1
+ *        LC-1  #2: wideband AFR bank 2
+ *        SSI-4 #2: MAP, VSS (vehicle speed from reluctor)
+ *    - SD card on SPI (CS pin 53 Mega / 10 Uno)
+ *    - Momentary button (pin 2) to start/stop recording
+ *    - LED indicator (pin 3) — solid after GPS fix, blinks while recording
+ *
+ *  Serial commands (115200 baud, type '?' for help):
+ *    r/s  start/stop recording    d  toggle live debug
+ *    p    sensor snapshot          v  system status
+ *    i    ISP2 diagnostics         g  GPS 5Hz    b  GPS 115200 baud
+ *
+ *  CSV output (24 columns):
+ *    time, lat, lon, speed, alt, dir, sats,
+ *    accx/y/z, rotx/y/z, magx/y/z, imuTemp,
+ *    afr, afr1, vss, map, oilp, coolant, gpsStale
+ *
+ *  Repository: github.com/mangeb/analog-bridge
  */
 #define FW_VERSION "0.9.0"
 
