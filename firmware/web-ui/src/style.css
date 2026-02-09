@@ -85,21 +85,7 @@
   @apply text-[10px] text-slate-600 uppercase tracking-widest mb-1.5 text-left;
 }
 
+/* cmd-btn kept as a selector hook for JS click handlers */
 .cmd-btn {
-  @apply flex flex-col items-center justify-center gap-0.5
-         bg-slate-800 hover:bg-slate-700 active:bg-slate-600
-         border border-slate-700 rounded-lg py-2 px-1
-         transition-colors cursor-pointer;
-}
-
-.cmd-icon {
-  @apply text-lg leading-none;
-}
-
-.cmd-desc {
-  @apply text-[10px] text-slate-400 leading-tight;
-}
-
-.cmd-key {
-  @apply text-[9px] font-mono text-slate-600;
+  /* styled via .rec-btn */
 }
