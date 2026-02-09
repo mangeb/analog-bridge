@@ -18,11 +18,17 @@ const el = {
   recBadge: document.getElementById('rec-badge'),
   gpsSats:  document.getElementById('gps-sats'),
   heap:     document.getElementById('heap'),
-  // Engine vitals
-  oil:      document.getElementById('oil-val'),
-  clt:      document.getElementById('clt-val'),
+  // AFR
+  afrCard:  document.getElementById('afr-card'),
+  afrAvg:   document.getElementById('afr-avg-val'),
   afr1:     document.getElementById('afr1-val'),
   afr2:     document.getElementById('afr2-val'),
+  // Engine vitals
+  oilCard:  document.getElementById('oil-card'),
+  oil:      document.getElementById('oil-val'),
+  cltCard:  document.getElementById('clt-card'),
+  clt:      document.getElementById('clt-val'),
+  // Speed + MAP
   vss:      document.getElementById('vss-val'),
   gpsSpd:   document.getElementById('gps-spd-val'),
   map:      document.getElementById('map-val'),
@@ -54,11 +60,6 @@ function afrClass(val) {
   if (val <= 13.5) return 'afr-target';
   if (val <= 15.0) return 'afr-stoich';
   return 'afr-lean';
-}
-
-function setAfr(elem, val) {
-  elem.textContent = val > 0 ? val.toFixed(1) : '--';
-  elem.className = 'gauge-value ' + afrClass(val);
 }
 
 //----------------------------------------------------------------
@@ -109,15 +110,36 @@ function drawGForce(ax, ay) {
 // Update UI from JSON frame
 //----------------------------------------------------------------
 function update(d) {
-  // Engine vitals
-  el.oil.textContent = d.eng.oil > 0 ? Math.round(d.eng.oil) : '--';
-  el.oil.className = 'gauge-value' + (d.eng.oil > 0 && d.eng.oil < 10 ? ' warn-oil' : '');
-  el.clt.textContent = d.eng.clt > 0 ? Math.round(d.eng.clt) : '--';
-  el.clt.className = 'gauge-value' + (d.eng.clt > 220 ? ' warn-clt' : '');
+  // AFR — combined average is the big number, banks are smaller
+  const afr1 = d.eng.afr;
+  const afr2 = d.eng.afr1;
+  const hasAfr1 = afr1 > 0;
+  const hasAfr2 = afr2 > 0;
+  let afrAvg = 0;
+  if (hasAfr1 && hasAfr2) afrAvg = (afr1 + afr2) / 2;
+  else if (hasAfr1) afrAvg = afr1;
+  else if (hasAfr2) afrAvg = afr2;
 
-  setAfr(el.afr1, d.eng.afr);
-  setAfr(el.afr2, d.eng.afr1);
+  el.afrAvg.textContent = afrAvg > 0 ? afrAvg.toFixed(1) : '--';
+  el.afrAvg.className = 'gauge-value ' + afrClass(afrAvg);
+  el.afr1.textContent = hasAfr1 ? afr1.toFixed(1) : '--';
+  el.afr2.textContent = hasAfr2 ? afr2.toFixed(1) : '--';
 
+  // Oil pressure — alarm if under 5 psi
+  const oilVal = d.eng.oil;
+  el.oil.textContent = oilVal > 0 ? Math.round(oilVal) : '--';
+  const oilAlarm = oilVal > 0 && oilVal < 5;
+  el.oil.className = 'gauge-value' + (oilAlarm ? ' warn-oil' : '');
+  el.oilCard.classList.toggle('alarm-active', oilAlarm);
+
+  // Coolant — alarm if over 210 F
+  const cltVal = d.eng.clt;
+  el.clt.textContent = cltVal > 0 ? Math.round(cltVal) : '--';
+  const cltAlarm = cltVal > 210;
+  el.clt.className = 'gauge-value' + (cltAlarm ? ' warn-clt' : '');
+  el.cltCard.classList.toggle('alarm-active', cltAlarm);
+
+  // Speed
   el.vss.textContent = d.eng.vss > 0 ? d.eng.vss.toFixed(0) : '0';
   el.gpsSpd.textContent = d.gps.spd > 0 ? d.gps.spd.toFixed(0) : '0';
   el.map.textContent = d.eng.map !== undefined ? d.eng.map.toFixed(1) : '--';
@@ -156,6 +178,25 @@ function update(d) {
     el.recInfo.classList.add('hidden');
   }
 }
+
+//----------------------------------------------------------------
+// Serial command buttons — send single-char over WebSocket
+//----------------------------------------------------------------
+document.querySelectorAll('.cmd-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const cmd = btn.dataset.cmd;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(cmd);
+      // Brief visual feedback
+      btn.classList.add('!bg-sky-900');
+      setTimeout(() => btn.classList.remove('!bg-sky-900'), 200);
+    } else {
+      // Flash red if not connected
+      btn.classList.add('!bg-red-900');
+      setTimeout(() => btn.classList.remove('!bg-red-900'), 300);
+    }
+  });
+});
 
 //----------------------------------------------------------------
 // WebSocket connection with auto-reconnect + demo fallback

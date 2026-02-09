@@ -23,45 +23,39 @@
 
   <main class="max-w-lg mx-auto px-3 py-4 space-y-3">
 
-    <!-- Engine Vitals (the "is it safe" gauges) -->
+    <!-- AFR (most important — first) -->
+    <section id="afr-card" class="gauge-card">
+      <div class="gauge-label">Air / Fuel Ratio</div>
+      <div id="afr-avg-val" class="gauge-value afr-stoich">--</div>
+      <div class="flex justify-center gap-6 mt-2 text-xs text-slate-500 font-mono">
+        <span>B1: <span id="afr1-val" class="text-slate-400">--</span></span>
+        <span>B2: <span id="afr2-val" class="text-slate-400">--</span></span>
+      </div>
+    </section>
+
+    <!-- Oil + Coolant (critical alarms) -->
     <section class="grid grid-cols-2 gap-3">
-      <div class="gauge-card">
+      <div id="oil-card" class="gauge-card">
         <div class="gauge-label">Oil Pressure</div>
         <div id="oil-val" class="gauge-value">--</div>
         <div class="gauge-unit">psi</div>
       </div>
-      <div class="gauge-card">
+      <div id="clt-card" class="gauge-card">
         <div class="gauge-label">Coolant</div>
         <div id="clt-val" class="gauge-value">--</div>
         <div class="gauge-unit">&deg;F</div>
       </div>
     </section>
 
-    <!-- AFR -->
+    <!-- Speed (VSS + GPS combined) + MAP -->
     <section class="grid grid-cols-2 gap-3">
       <div class="gauge-card">
-        <div class="gauge-label">AFR Bank 1</div>
-        <div id="afr1-val" class="gauge-value afr-stoich">--</div>
+        <div class="gauge-label">Speed</div>
+        <div id="vss-val" class="gauge-value text-3xl">--</div>
+        <div class="gauge-unit">mph (VSS)</div>
+        <div class="text-xs text-slate-600 font-mono mt-1">GPS: <span id="gps-spd-val">--</span> mph</div>
       </div>
       <div class="gauge-card">
-        <div class="gauge-label">AFR Bank 2</div>
-        <div id="afr2-val" class="gauge-value afr-stoich">--</div>
-      </div>
-    </section>
-
-    <!-- Speed + MAP -->
-    <section class="grid grid-cols-3 gap-3">
-      <div class="gauge-card col-span-1">
-        <div class="gauge-label">VSS</div>
-        <div id="vss-val" class="gauge-value text-3xl">--</div>
-        <div class="gauge-unit">mph</div>
-      </div>
-      <div class="gauge-card col-span-1">
-        <div class="gauge-label">GPS Speed</div>
-        <div id="gps-spd-val" class="gauge-value text-3xl">--</div>
-        <div class="gauge-unit">mph</div>
-      </div>
-      <div class="gauge-card col-span-1">
         <div class="gauge-label">MAP</div>
         <div id="map-val" class="gauge-value text-3xl">--</div>
         <div class="gauge-unit">"Hg</div>
@@ -108,6 +102,89 @@
         <span>Keyframes: <span id="rec-kf">0</span></span>
       </div>
     </div>
+
+    <!-- Serial Commands -->
+    <details class="gauge-card" id="cmd-panel">
+      <summary class="gauge-label cursor-pointer">Commands</summary>
+      <div class="mt-3 space-y-2">
+        <!-- Recording -->
+        <div class="cmd-group">
+          <div class="cmd-group-label">Recording</div>
+          <div class="grid grid-cols-3 gap-2">
+            <button class="cmd-btn" data-cmd="r">
+              <span class="cmd-key">r</span>
+              <span class="cmd-desc">Start</span>
+            </button>
+            <button class="cmd-btn" data-cmd="s">
+              <span class="cmd-key">s</span>
+              <span class="cmd-desc">Stop</span>
+            </button>
+            <button class="cmd-btn" data-cmd="k">
+              <span class="cmd-key">k</span>
+              <span class="cmd-desc">Keyframe</span>
+            </button>
+          </div>
+        </div>
+        <!-- Display -->
+        <div class="cmd-group">
+          <div class="cmd-group-label">Display</div>
+          <div class="grid grid-cols-2 gap-2">
+            <button class="cmd-btn" data-cmd="d">
+              <span class="cmd-key">d</span>
+              <span class="cmd-desc">Debug stream</span>
+            </button>
+            <button class="cmd-btn" data-cmd="p">
+              <span class="cmd-key">p</span>
+              <span class="cmd-desc">Snapshot</span>
+            </button>
+            <button class="cmd-btn" data-cmd="v">
+              <span class="cmd-key">v</span>
+              <span class="cmd-desc">System status</span>
+            </button>
+            <button class="cmd-btn" data-cmd="i">
+              <span class="cmd-key">i</span>
+              <span class="cmd-desc">ISP2 diag</span>
+            </button>
+          </div>
+        </div>
+        <!-- IMU Calibration -->
+        <div class="cmd-group">
+          <div class="cmd-group-label">IMU Calibration</div>
+          <div class="grid grid-cols-2 gap-2">
+            <button class="cmd-btn" data-cmd="c">
+              <span class="cmd-key">c</span>
+              <span class="cmd-desc">Accel cal</span>
+            </button>
+            <button class="cmd-btn" data-cmd="m">
+              <span class="cmd-key">m</span>
+              <span class="cmd-desc">Mag cal</span>
+            </button>
+            <button class="cmd-btn" data-cmd="C">
+              <span class="cmd-key">C</span>
+              <span class="cmd-desc">Show cal</span>
+            </button>
+            <button class="cmd-btn" data-cmd="E">
+              <span class="cmd-key">E</span>
+              <span class="cmd-desc">Erase cal</span>
+            </button>
+          </div>
+        </div>
+        <!-- GPS & WiFi -->
+        <div class="cmd-group">
+          <div class="cmd-group-label">GPS / WiFi</div>
+          <div class="grid grid-cols-2 gap-2">
+            <button class="cmd-btn" data-cmd="g">
+              <span class="cmd-key">g</span>
+              <span class="cmd-desc">GPS reconfig</span>
+            </button>
+            <button class="cmd-btn" data-cmd="w">
+              <span class="cmd-key">w</span>
+              <span class="cmd-desc">WiFi status</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </details>
 
   </main>
 
